@@ -4,12 +4,11 @@ use crate::{
     device::{Device, Snapshot},
     preferences::{self, Preferences},
 };
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
     path::PathBuf,
-    process::{Command, Stdio},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -47,31 +46,9 @@ pub fn start() -> Result<()> {
     if running()? {
         return Ok(());
     }
-    let mut command = Command::new(std::env::current_exe()?);
-    command
-        .arg("--background")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
-    }
-    let mut child = command
-        .spawn()
-        .context("Starting background battery monitor")?;
-    // Reap the child if the GUI remains open; the monitor survives if it closes.
-    thread::spawn(move || {
-        let _ = child.wait();
-    });
-    Ok(())
+    crate::launch::detached(&["--background"])
 }
+
 pub fn quit() -> Result<()> {
     if running()? {
         preferences::atomic_write(&crate::device::state_dir()?.join("monitor-stop"), b"stop")?;

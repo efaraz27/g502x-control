@@ -7,6 +7,7 @@
 | `src/preferences.rs` | Atomic user preferences and native per-user startup entries |
 | `src/alerts.rs` | Native desktop notifications, persistent deduplication and cooldown |
 | `src/monitor.rs` | Singleton background battery worker, health and shutdown control |
+| `src/launch.rs` | Detached process launch without inherited caller pipes/handles |
 | `src/tray.rs` | Native tray menu and lightweight platform event loop |
 | `src/design.rs` | Palette, fonts, components, icons and vector mouse illustration |
 | `src/device.rs` | Identity/capability discovery, settings, memory transactions, backups and process lock |

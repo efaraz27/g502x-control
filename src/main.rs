@@ -4,6 +4,7 @@ mod alerts;
 mod device;
 #[cfg(feature = "gui")]
 mod gui;
+mod launch;
 mod monitor;
 mod preferences;
 mod profile;

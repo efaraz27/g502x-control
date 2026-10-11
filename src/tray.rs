@@ -1,7 +1,6 @@
 //! Native tray; Linux uses StatusNotifierItem without a GTK/GPU runtime.
 use anyhow::Result;
 use std::{
-    process::Command,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -90,19 +89,9 @@ impl Tray {
     }
 }
 fn open_window(settings: bool) {
-    if let Ok(exe) = std::env::current_exe() {
-        let mut command = Command::new(exe);
-        if settings {
-            command.arg("--settings");
-        }
-        // Reap the child when it exits, without tying the monitor to its lifetime.
-        if let Ok(mut child) = command.spawn() {
-            std::thread::spawn(move || {
-                let _ = child.wait();
-            });
-        }
-    }
+    let _ = crate::launch::detached(if settings { &["--settings"] } else { &[] });
 }
+
 pub fn run(stop: Arc<AtomicBool>) -> Result<()> {
     #[cfg(target_os = "linux")]
     {
