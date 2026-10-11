@@ -117,6 +117,7 @@ if __name__ == '__main__':
     binary = Path(os.environ.get('CARGO_TARGET_DIR', ROOT/'target'))/'release'/filename
     if not binary.is_file():
         parser.error(f'Build first: missing {binary}')
+    run(binary, '--version')
     DIST.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='g502x-package-') as temp:
         globals()[os_name](args.platform, Path(temp), binary)

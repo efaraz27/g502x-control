@@ -35,6 +35,6 @@ Automatic pre-save and pre-restore backups remain local to the user; no device b
 
 ## Version 0.3 portability and packaging
 
-Linux read-only hardware checks passed after extracting the hidraw backend: all five profiles, CRCs, field ranges and no-op saves passed without flash writes. The file storage port adds tests for never overwriting existing JSON and rejecting Unix symlink destinations (14 tests on Unix; 13 on Windows).
+Linux read-only hardware checks passed after extracting the hidraw backend, including LIGHTSPEED with the Ubuntu-built distributable binary: all five profiles, CRCs, field ranges and no-op saves passed without flash writes. The file storage port adds tests for never overwriting existing JSON and rejecting Unix symlink destinations (14 tests on Unix; 13 on Windows).
 
 The build workflow runs formatting, Clippy, tests, headless compilation, GUI release compilation and packaging on Linux x86-64/ARM64, Windows x86-64, macOS Intel and macOS Apple Silicon. The public Actions history records the result for each commit. Windows and macOS device communication remains experimental; no physical mouse test on those systems has been performed. New installer generation does not itself verify OS installation or hardware behavior.

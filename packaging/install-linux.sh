@@ -8,16 +8,18 @@ if [ ! -x "$app_bin" ]; then
     printf '%s\n' 'Binary missing. Build with cargo build --release --locked, then run:' 'sh packaging/install-linux.sh target/release/g502x-control' >&2
     exit 1
 fi
-mkdir -p "$HOME/.local/bin"
-app_tmp_bin="$HOME/.local/bin/.g502x-control.install-$$"
+app_prefix=${G502X_INSTALL_PREFIX:-"$HOME/.local"}
+mkdir -p "$app_prefix/bin"
+app_prefix=$(CDPATH= cd -- "$app_prefix" && pwd)
+app_tmp_bin=$(mktemp "$app_prefix/bin/.g502x-control.XXXXXX")
 trap 'rm -f -- "$app_tmp_bin"' EXIT HUP INT TERM
 install -m755 "$app_bin" "$app_tmp_bin"
-mv -f -- "$app_tmp_bin" "$HOME/.local/bin/g502x-control"
-install -Dm644 "$app_dir/packaging/g502x-control.svg" "$HOME/.local/share/icons/hicolor/scalable/apps/g502x-control.svg"
-install -Dm644 "$app_dir/packaging/70-g502x-control.rules" "$HOME/.local/share/g502x-control/70-g502x-control.rules"
-mkdir -p "$HOME/.local/share/applications"
-app_exec=$(printf '%s' "$HOME/.local/bin/g502x-control" | sed 's/\\/\\\\/g; s/"/\\"/g; s/`/\\`/g; s/\$/\\$/g; s/%/%%/g')
-cat > "$HOME/.local/share/applications/g502x-control.desktop" <<DESKTOP
+mv -f -- "$app_tmp_bin" "$app_prefix/bin/g502x-control"
+install -Dm644 "$app_dir/packaging/g502x-control.svg" "$app_prefix/share/icons/hicolor/scalable/apps/g502x-control.svg"
+install -Dm644 "$app_dir/packaging/70-g502x-control.rules" "$app_prefix/share/g502x-control/70-g502x-control.rules"
+mkdir -p "$app_prefix/share/applications"
+app_exec=$(printf '%s' "$app_prefix/bin/g502x-control" | sed 's/\\/\\\\/g; s/"/\\"/g; s/`/\\`/g; s/\$/\\$/g; s/%/%%/g')
+cat > "$app_prefix/share/applications/g502x-control.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Name=G502 X Control
@@ -29,10 +31,11 @@ Categories=Settings;HardwareSettings;
 StartupWMClass=g502x-control
 DESKTOP
 if command -v update-desktop-database >/dev/null 2>&1; then
-    update-desktop-database "$HOME/.local/share/applications" || true
+    update-desktop-database "$app_prefix/share/applications" || true
 fi
 printf '%s\n' 'Installed. Open G502 X Control from your application menu.'
 if [ ! -f /etc/udev/rules.d/70-g502x-control.rules ] && [ ! -f /usr/lib/udev/rules.d/70-g502x-control.rules ]; then
     printf '\n%s\n' 'If the app reports permission denied, enable mouse access once:'
-    printf '%s\n' '  sudo install -m644 "$HOME/.local/share/g502x-control/70-g502x-control.rules" /etc/udev/rules.d/' '  sudo udevadm control --reload-rules' 'Then reconnect your mouse or receiver.'
+    printf '  sudo install -m644 "%s" /etc/udev/rules.d/\n' "$app_prefix/share/g502x-control/70-g502x-control.rules"
+    printf '%s\n' '  sudo udevadm control --reload-rules' 'Then reconnect your mouse or receiver.'
 fi
