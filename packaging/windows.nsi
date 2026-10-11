@@ -22,7 +22,12 @@ UninstallIcon "${SOURCE}\packaging\g502x-control.ico"
 Section "Install"
   SetShellVarContext current
   SetOutPath "$INSTDIR"
+  # Stop an existing tray process before replacing its executable, retaining preferences.
+  IfFileExists "$INSTDIR\g502x-control.exe" 0 +2
+    ExecWait '$\"$INSTDIR\g502x-control.exe$\" monitor quit'
   File /r "${PAYLOAD}\*"
+  # --background exits immediately unless the user has already enabled it.
+  Exec '$\"$INSTDIR\g502x-control.exe$\" --background'
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   CreateDirectory "$SMPROGRAMS\G502 X Control"
   CreateShortcut "$SMPROGRAMS\G502 X Control\G502 X Control.lnk" "$INSTDIR\g502x-control.exe"
@@ -37,6 +42,9 @@ Section "Install"
 SectionEnd
 Section "Uninstall"
   SetShellVarContext current
+  ExecWait '$\"$INSTDIR\g502x-control.exe$\" monitor stop'
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "G502 X Control"
+  DeleteRegKey HKCU "Software\Classes\AppUserModelId\io.github.efaraz27.g502x-control"
   Delete "$INSTDIR\g502x-control.exe"
   Delete "$INSTDIR\LICENSE"
   Delete "$INSTDIR\NOTICE"

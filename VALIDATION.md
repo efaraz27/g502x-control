@@ -38,3 +38,14 @@ Automatic pre-save and pre-restore backups remain local to the user; no device b
 Linux read-only hardware checks passed after extracting the hidraw backend, including LIGHTSPEED with the Ubuntu-built distributable binary: all five profiles, CRCs, field ranges and no-op saves passed without flash writes. The file storage port adds tests for never overwriting existing JSON and rejecting Unix symlink destinations (14 tests on Unix; 13 on Windows).
 
 The build workflow runs formatting, Clippy, tests, headless compilation, GUI release compilation and packaging on Linux x86-64/ARM64, Windows x86-64, macOS Intel and macOS Apple Silicon. The public Actions history records the result for each commit. Windows and macOS device communication remains experimental; no physical mouse test on those systems has been performed. New installer generation does not itself verify OS installation or hardware behavior.
+
+## Version 0.4 live updates, notifications and tray
+
+- 24 unit tests on Linux, including preservation of unsaved drafts and the original write-conflict baseline, open binding editors, unapplied live inputs, alert cooldown/hysteresis/charging suppression, persisted deduplication, startup path quoting and atomic preferences.
+- On the connected G502 X Plus, the running GUI observed an external temporary switch to software mode and 850 DPI without pressing Refresh. After the test, the original mode, active profile, DPI stage, DPI, rate and wheel state were restored. Profile bytes and directory remained unchanged.
+- Native Settings screenshots inspected at 1240 × 860 and 840 × 740. Settings use responsive cards with a persistent Save preferences bar.
+- Linux notification test accepted by the desktop notification service. The mouse was charging above the warning threshold; low-charge transitions and duplicate suppression were tested with synthetic unit-test data, not by draining the hardware battery.
+- Linux StatusNotifierItem registration and tray battery/charging labels verified against the active panel. Real tray menu actions opened the app, selected Settings in the existing window without creating another, and quit the monitor. Monitor/startup lifecycle tests use isolated state and startup locations, without changing the user's real login settings.
+- A new cross-platform lifecycle smoke test checks disabled startup, opt-in registration, singleton behavior, session quit, relaunch, persistent stop and startup removal. CI runs it after every native release build.
+
+Windows/macOS tray, login and notification code is included in native CI builds and lifecycle checks. Real desktop visibility, notification permissions and mouse behavior on those platforms still require physical testing. Unsigned-release limitations continue to apply.

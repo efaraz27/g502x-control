@@ -1,10 +1,15 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod alerts;
 mod device;
 #[cfg(feature = "gui")]
 mod gui;
+mod monitor;
+mod preferences;
 mod profile;
 mod transport;
+#[cfg(feature = "gui")]
+mod tray;
 use anyhow::{Context, Result, ensure};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -18,11 +23,27 @@ struct Args {
     /// Select an endpoint path from `list`; defaults to USB cable, then receiver.
     #[arg(long, global = true)]
     device: Option<PathBuf>,
+    /// Run the battery monitor and tray without opening a window.
+    #[arg(long, conflicts_with = "settings")]
+    background: bool,
+    /// Open application preferences.
+    #[arg(long)]
+    settings: bool,
     #[command(subcommand)]
     command: Option<Command>,
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Manage the background monitor without opening a window.
+    Monitor {
+        #[arg(value_parser=["start", "stop", "quit", "status"])]
+        action: String,
+        /// Also start automatically when you sign in (with `start` only).
+        #[arg(long)]
+        at_login: bool,
+    },
+    /// Send a test desktop notification.
+    NotifyTest,
     /// Read current settings and every onboard profile (JSON).
     Status,
     /// List matching HID endpoints without changing the mouse.
@@ -118,7 +139,9 @@ struct ProfileFile {
 }
 fn main() {
     #[cfg(all(windows, not(debug_assertions)))]
-    if std::env::args_os().len() > 1 {
+    if std::env::args_os().len() > 1
+        && !std::env::args_os().any(|a| a == "--background" || a == "--settings")
+    {
         // GUI launches stay console-free; CLI invocations use the parent terminal.
         unsafe {
             windows_sys::Win32::System::Console::AttachConsole(
@@ -133,14 +156,71 @@ fn main() {
 }
 fn run() -> Result<()> {
     let args = Args::parse();
+    ensure!(
+        !(args.background || args.settings) || args.command.is_none(),
+        "Window options cannot be combined with a subcommand"
+    );
+    if args.background {
+        return monitor::run(args.device);
+    }
     let Some(command) = args.command else {
         #[cfg(feature = "gui")]
-        return gui::run(args.device);
+        return gui::run(args.device, args.settings);
         #[cfg(not(feature = "gui"))]
         anyhow::bail!("This build has no GUI. Run --help for commands.");
     };
     if matches!(command, Command::List) {
         println!("{}", serde_json::to_string_pretty(&transport::discover()?)?);
+        return Ok(());
+    }
+    if let Command::Monitor {
+        ref action,
+        at_login,
+    } = command
+    {
+        ensure!(
+            !at_login || action == "start",
+            "--at-login is only valid with monitor start"
+        );
+        match action.as_str() {
+            "start" => {
+                let mut p = preferences::Preferences::load()?;
+                p.background_enabled = true;
+                if at_login {
+                    p.launch_at_login = true;
+                }
+                preferences::apply(&p)?;
+                println!("Background monitor started.");
+            }
+            "stop" => {
+                let mut p = preferences::Preferences::load()?;
+                p.background_enabled = false;
+                p.launch_at_login = false;
+                preferences::apply(&p)?;
+                monitor::quit()?;
+                monitor::wait_stopped()?;
+                println!("Background monitoring and login startup disabled.");
+            }
+            "quit" => {
+                monitor::quit()?;
+                monitor::wait_stopped()?;
+                println!("Background monitor stopping; login preference preserved.");
+            }
+            _ => println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &serde_json::json!({"running":monitor::running()?, "preferences":preferences::Preferences::load()?, "startup_registered": preferences::startup_enabled()?, "health":monitor::health(), "tray_error":monitor::tray_error()})
+                )?
+            ),
+        }
+        return Ok(());
+    }
+    if matches!(command, Command::NotifyTest) {
+        alerts::show(
+            "G502 X Control",
+            "Battery alerts are ready. This is a test notification.",
+        )?;
+        println!("Test notification sent to your desktop.");
         return Ok(());
     }
     let mut d = device::Device::connect(args.device.as_deref())?;
@@ -334,7 +414,7 @@ fn run() -> Result<()> {
             }
             println!("All profile CRCs, field ranges and no-op saves passed. No flash writes.");
         }
-        Command::List => unreachable!(),
+        Command::List | Command::Monitor { .. } | Command::NotifyTest => unreachable!(),
     }
     Ok(())
 }

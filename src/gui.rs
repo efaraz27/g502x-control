@@ -10,10 +10,15 @@ use design::{ACCENT, DIM, Icon, MUTED, TEXT};
 use std::{
     path::PathBuf,
     sync::mpsc::{self, Receiver, Sender},
-    time::Duration,
+    time::{Duration, Instant},
 };
 #[derive(Clone)]
 enum Job {
+    Poll {
+        cached: Option<Box<Snapshot>>,
+        full: bool,
+        live: bool,
+    },
     Refresh,
     Save(Box<Snapshot>, Profile),
     Activate(u16),
@@ -35,6 +40,12 @@ struct Reply {
     message: String,
     reset: bool,
     imported: Option<Profile>,
+    full: bool,
+    notification_error: Option<String>,
+}
+struct WorkerReply {
+    automatic: bool,
+    result: Result<Reply, String>,
 }
 #[derive(Clone, Copy)]
 enum FileAction {
@@ -51,7 +62,20 @@ struct App {
     details_open: bool,
     function_data: u8,
     tx: Sender<Job>,
-    rx: Receiver<Result<Reply, String>>,
+    rx: Receiver<WorkerReply>,
+    save_base: Option<Snapshot>,
+    preferences: crate::preferences::Preferences,
+    saved_preferences: crate::preferences::Preferences,
+    settings_message: String,
+    notification: Option<Receiver<Result<(), String>>>,
+    poll_pending: bool,
+    next_poll: Instant,
+    last_full: Instant,
+    last_success: Option<Instant>,
+    poll_failures: u32,
+    connection_error: Option<String>,
+    background_running: bool,
+    next_background_check: Instant,
     snapshot: Option<Snapshot>,
     draft: Option<Profile>,
     name: String,
@@ -82,10 +106,52 @@ struct App {
     close_confirm: bool,
 }
 fn perform(path: Option<&std::path::Path>, job: Job) -> Result<Reply> {
+    if let Job::Poll { cached, full, live } = job {
+        let mut d = Device::connect_cached(path, cached.as_deref())?;
+        let full = full
+            || cached.as_ref().is_none_or(|s| {
+                s.unit_id != d.unit_id || s.endpoint.path != d.transport.endpoint.path
+            });
+        let mut snapshot = if full {
+            d.snapshot()?
+        } else {
+            *cached.unwrap()
+        };
+        if !full {
+            if live {
+                snapshot.status = d.status()?;
+            } else {
+                let (battery, charge) = d.battery()?;
+                snapshot.status.battery = battery;
+                snapshot.status.charge_status = charge;
+            }
+        }
+        drop(d);
+        let notification_error = crate::preferences::Preferences::load()
+            .and_then(|p| {
+                crate::alerts::check(
+                    &snapshot.unit_id,
+                    snapshot.status.battery,
+                    snapshot.status.charge_status,
+                    &p,
+                )
+            })
+            .err()
+            .map(|e| format!("{e:#}"));
+        return Ok(Reply {
+            snapshot,
+            message: String::new(),
+            reset: false,
+            imported: None,
+            full,
+            notification_error,
+        });
+    }
     let mut d = Device::connect(path)?;
     let mut reset = false;
     let mut imported = None;
     let message = match job {
+        Job::Poll { .. } => unreachable!(),
         Job::Refresh => {
             reset = true;
             "Settings loaded from your mouse.".into()
@@ -186,9 +252,36 @@ fn perform(path: Option<&std::path::Path>, job: Job) -> Result<Reply> {
         message,
         reset,
         imported,
+        full: true,
+        notification_error: None,
     })
 }
-pub fn run(path: Option<PathBuf>) -> Result<()> {
+pub fn run(path: Option<PathBuf>, settings: bool) -> Result<()> {
+    let guard = crate::alerts::private_lock("gui.lock")?;
+    match guard.try_lock() {
+        Ok(()) => (),
+        Err(std::fs::TryLockError::WouldBlock) => {
+            crate::preferences::atomic_write(
+                &device::state_dir()?.join("open-window"),
+                if settings { b"settings" } else { b"open" },
+            )?;
+            return Ok(());
+        }
+        Err(e) => return Err(e.into()),
+    }
+    let _ = std::fs::remove_file(device::state_dir()?.join("open-window"));
+    let (preferences, mut settings_message) = match crate::preferences::Preferences::load() {
+        Ok(p) => (p, String::new()),
+        Err(e) => (
+            crate::preferences::Preferences::default(),
+            format!("Could not load preferences: {e:#}"),
+        ),
+    };
+    if preferences.background_enabled
+        && let Err(e) = crate::monitor::start()
+    {
+        settings_message = format!("Could not start background monitor: {e:#}");
+    }
     let icon =
         image::load_from_memory(include_bytes!("../packaging/g502x-control.png"))?.into_rgba8();
     let icon = egui::IconData {
@@ -215,57 +308,15 @@ pub fn run(path: Option<PathBuf>) -> Result<()> {
             let ctx = cc.egui_ctx.clone();
             std::thread::spawn(move || {
                 while let Ok(job) = jobs.recv() {
+                    let automatic = matches!(job, Job::Poll { .. });
                     let result = perform(path.as_deref(), job).map_err(|e| format!("{e:#}"));
-                    if replies.send(result).is_err() {
+                    if replies.send(WorkerReply { automatic, result }).is_err() {
                         break;
                     }
                     ctx.request_repaint();
                 }
             });
-            let app = App {
-                picker: None,
-                capture_requested: false,
-                capture_settle: 0,
-                profile_tab: std::env::var("G502X_CAPTURE_SECTION")
-                    .ok()
-                    .and_then(|x| x.parse().ok())
-                    .unwrap_or(0),
-                details_open: false,
-                function_data: 0,
-                tx,
-                rx,
-                snapshot: None,
-                draft: None,
-                name: String::new(),
-                selected: 0,
-                tab: std::env::var("G502X_CAPTURE_TAB")
-                    .ok()
-                    .and_then(|x| x.parse().ok())
-                    .unwrap_or(0),
-                busy: true,
-                message: "Connecting to your mouse…".into(),
-                error: false,
-                shifted: false,
-                edit_button: None,
-                binding_type: 0,
-                key: 4,
-                modifiers: 0,
-                media: 0xcd,
-                function: 7,
-                mouse_button: 1,
-                color: [205, 244, 130],
-                effect: 1,
-                period: 5000,
-                intensity: 100,
-                leds: vec![[205, 244, 130]; 8],
-                live_dpi: 800,
-                live_rate: 1,
-                reverse: false,
-                hires: false,
-                file_path: String::new(),
-                restore_confirm: false,
-                close_confirm: false,
-            };
+            let app = App::new(tx, rx, preferences, settings_message, settings);
             app.tx.send(Job::Refresh)?;
             Ok(Box::new(app))
         }),
@@ -273,6 +324,72 @@ pub fn run(path: Option<PathBuf>) -> Result<()> {
     .map_err(|e| anyhow::anyhow!("Could not open native window: {e}"))
 }
 impl App {
+    fn new(
+        tx: Sender<Job>,
+        rx: Receiver<WorkerReply>,
+        preferences: crate::preferences::Preferences,
+        settings_message: String,
+        settings: bool,
+    ) -> Self {
+        Self {
+            picker: None,
+            capture_requested: false,
+            capture_settle: 0,
+            profile_tab: std::env::var("G502X_CAPTURE_SECTION")
+                .ok()
+                .and_then(|x| x.parse().ok())
+                .unwrap_or(0),
+            details_open: false,
+            function_data: 0,
+            tx,
+            rx,
+            save_base: None,
+            saved_preferences: preferences.clone(),
+            preferences,
+            settings_message,
+            notification: None,
+            poll_pending: false,
+            next_poll: Instant::now(),
+            last_full: Instant::now(),
+            last_success: None,
+            poll_failures: 0,
+            connection_error: None,
+            background_running: false,
+            next_background_check: Instant::now(),
+            snapshot: None,
+            draft: None,
+            name: String::new(),
+            selected: 0,
+            tab: std::env::var("G502X_CAPTURE_TAB")
+                .ok()
+                .and_then(|x| x.parse().ok())
+                .unwrap_or(if settings { 4 } else { 0 }),
+            busy: true,
+            message: "Connecting to your mouse…".into(),
+            error: false,
+            shifted: false,
+            edit_button: None,
+            binding_type: 0,
+            key: 4,
+            modifiers: 0,
+            media: 0xcd,
+            function: 7,
+            mouse_button: 1,
+            color: [205, 244, 130],
+            effect: 1,
+            period: 5000,
+            intensity: 100,
+            leds: vec![[205, 244, 130]; 8],
+            live_dpi: 800,
+            live_rate: 1,
+            reverse: false,
+            hires: false,
+            file_path: String::new(),
+            restore_confirm: false,
+            close_confirm: false,
+        }
+    }
+
     fn send(&mut self, job: Job) {
         if self.busy {
             return;
@@ -284,7 +401,7 @@ impl App {
         }
     }
     fn dirty(&self) -> bool {
-        match (&self.snapshot, &self.draft) {
+        match (&self.save_base, &self.draft) {
             (Some(s), Some(p)) => {
                 s.profiles.get(self.selected) != Some(p) || edit_name(p) != self.name
             }
@@ -293,6 +410,10 @@ impl App {
     }
     fn select(&mut self, i: usize) {
         if let Some(s) = &self.snapshot {
+            if s.profiles.is_empty() {
+                return;
+            }
+            self.save_base = Some(s.clone());
             self.selected = i.min(s.profiles.len() - 1);
             let p = s.profiles[self.selected].clone();
             self.name = edit_name(&p);
@@ -300,7 +421,7 @@ impl App {
             self.edit_button = None;
         }
     }
-    fn accept(&mut self, r: Reply) {
+    fn accept(&mut self, r: Reply, automatic: bool) {
         if self.snapshot.is_none() {
             self.selected = r
                 .snapshot
@@ -309,13 +430,34 @@ impl App {
                 .position(|p| p.sector == r.snapshot.status.active_sector)
                 .unwrap_or(0);
         }
-        let keep = self.dirty() && !r.reset;
-        self.live_dpi = r.snapshot.status.dpi;
-        self.live_rate = r.snapshot.status.rate_ms;
-        self.reverse = r.snapshot.status.wheel & 4 != 0;
-        self.hires = r.snapshot.status.wheel & 2 != 0;
+        let keep = !r.reset && (self.dirty() || automatic && self.edit_button.is_some());
+        let old = self.snapshot.as_ref().map(|s| &s.status);
+        merge_live(
+            &mut self.live_dpi,
+            old.map(|s| s.dpi),
+            r.snapshot.status.dpi,
+            automatic,
+        );
+        merge_live(
+            &mut self.live_rate,
+            old.map(|s| s.rate_ms),
+            r.snapshot.status.rate_ms,
+            automatic,
+        );
+        merge_live(
+            &mut self.reverse,
+            old.map(|s| s.wheel & 4 != 0),
+            r.snapshot.status.wheel & 4 != 0,
+            automatic,
+        );
+        merge_live(
+            &mut self.hires,
+            old.map(|s| s.wheel & 2 != 0),
+            r.snapshot.status.wheel & 2 != 0,
+            automatic,
+        );
         self.snapshot = Some(r.snapshot);
-        if !keep {
+        if !keep && (r.full || self.draft.is_none()) {
             self.select(self.selected);
         }
         if let Some(p) = r.imported {
@@ -327,12 +469,18 @@ impl App {
                 .iter()
                 .position(|x| x.sector == p.sector)
                 .unwrap();
+            self.save_base = self.snapshot.clone();
             self.name = edit_name(&p);
             self.draft = Some(p);
             self.tab = 1;
         }
-        self.message = r.message;
-        self.error = false;
+        if !automatic {
+            self.message = r.message;
+            self.error = false;
+        }
+        if let Some(e) = r.notification_error {
+            self.settings_message = e;
+        }
     }
     fn choose_file(&mut self, action: FileAction, ctx: &egui::Context) {
         if self.picker.is_some() {
@@ -411,7 +559,7 @@ impl App {
         }
     }
     fn save(&mut self) {
-        let (Some(s), Some(p)) = (&self.snapshot, &self.draft) else {
+        let (Some(s), Some(p)) = (&self.save_base, &self.draft) else {
             return;
         };
         let mut p = p.clone();
@@ -550,7 +698,7 @@ impl App {
                 "BATTERY",
                 &s.status.battery.to_string(),
                 "%",
-                if s.status.charge_status == 1 {
+                if (1..=4).contains(&s.status.charge_status) {
                     "Charging"
                 } else {
                     "On battery"
@@ -1446,6 +1594,153 @@ impl App {
             self.edit_button = None;
         }
     }
+    fn settings(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        design::title(
+            ui,
+            "Always in the loop",
+            "Live readings, quiet battery alerts, and a home in your system tray.",
+        );
+        ui.spacing_mut().item_spacing.y = 8.0;
+        if ui.available_width() >= 880.0 {
+            ui.columns(2, |columns| {
+                self.live_preferences(&mut columns[0]);
+                self.alert_preferences(&mut columns[1], ctx);
+            });
+        } else {
+            self.live_preferences(ui);
+            ui.add_space(8.0);
+            self.alert_preferences(ui, ctx);
+        }
+        ui.add_space(8.0);
+        design::card().show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                design::eyebrow(ui, "BACKGROUND & STARTUP");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    design::pill(ui, if self.background_running { "RUNNING" } else { "STOPPED" }, if self.background_running { ACCENT } else { MUTED });
+                });
+            });
+            ui.add_space(4.0);
+            if preference_toggle(ui, &mut self.preferences.background_enabled, "Keep a monitor in the system tray") && !self.preferences.background_enabled {
+                self.preferences.launch_at_login = false;
+            }
+            design::muted(ui, "Battery checks continue once a minute after you close this window. Reopen the app from the tray.");
+            ui.add_space(4.0);
+            design::separator(ui);
+            ui.add_space(4.0);
+            if preference_toggle(ui, &mut self.preferences.launch_at_login, "Launch when I sign in") && self.preferences.launch_at_login {
+                self.preferences.background_enabled = true;
+            }
+            design::muted(ui, "Starts quietly in the background, without opening a window.");
+            if self.background_running || self.saved_preferences.background_enabled {
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    if self.background_running {
+                        if ui.add(design::secondary("Quit monitor for now")).clicked() {
+                            self.settings_message = match crate::monitor::quit() { Ok(()) => "Monitor stopping. Your startup preference is saved.".into(), Err(e) => format!("{e:#}") };
+                        }
+                    } else if ui.add(design::secondary("Start monitor")).clicked() {
+                        self.settings_message = match crate::monitor::start() { Ok(()) => "Starting the background monitor…".into(), Err(e) => format!("{e:#}") };
+                    }
+                    if self.background_running && let Some(h) = crate::monitor::health() {
+                        design::muted(ui, format!("Last check {}s ago", crate::alerts::now().saturating_sub(h.last_checked)));
+                        if let Some(error) = h.error { ui.colored_label(design::ERROR, "Needs attention").on_hover_text(error); }
+                    }
+                });
+            }
+            #[cfg(target_os = "linux")]
+            ui.label(RichText::new("On GNOME, enable AppIndicator support to see tray icons.").size(11.0).color(DIM));
+        });
+        if self.background_running
+            && let Some(e) = crate::monitor::tray_error()
+        {
+            ui.colored_label(design::ERROR, format!("Tray unavailable: {e}"));
+        }
+        if !self.settings_message.is_empty() {
+            ui.add_space(6.0);
+            ui.add(egui::Label::new(&self.settings_message).wrap());
+        }
+    }
+    fn live_preferences(&mut self, ui: &mut egui::Ui) {
+        design::card().show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.set_min_height(178.0);
+            design::eyebrow(ui, "LIVE DEVICE DATA");
+            ui.add_space(6.0);
+            preference_toggle(
+                ui,
+                &mut self.preferences.live_updates,
+                "Update automatically",
+            );
+            design::muted(
+                ui,
+                "Current readings, without refreshing. Unsaved edits stay intact.",
+            );
+            ui.add_space(8.0);
+            ui.add_enabled_ui(self.preferences.live_updates, |ui| {
+                ui.horizontal(|ui| {
+                    design::muted(ui, "Every");
+                    ui.spacing_mut().slider_width = 155.0;
+                    ui.add(
+                        egui::Slider::new(&mut self.preferences.refresh_seconds, 1..=10)
+                            .suffix(" sec"),
+                    );
+                });
+            });
+        });
+    }
+    fn alert_preferences(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        design::card().show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.set_min_height(178.0);
+            design::eyebrow(ui, "BATTERY ALERTS");
+            ui.add_space(6.0);
+            preference_toggle(
+                ui,
+                &mut self.preferences.battery_alerts,
+                "Low-battery notification",
+            );
+            design::muted(ui, "One alert when running low. Quiet while charging.");
+            ui.horizontal_wrapped(|ui| {
+                ui.add_enabled_ui(self.preferences.battery_alerts, |ui| {
+                    design::muted(ui, "At");
+                    ui.spacing_mut().slider_width = 90.0;
+                    ui.add(
+                        egui::Slider::new(&mut self.preferences.low_battery_percent, 5..=50)
+                            .suffix("%"),
+                    );
+                });
+                if ui
+                    .add_enabled(self.notification.is_none(), design::secondary("Send test"))
+                    .on_hover_text("Send a test desktop notification")
+                    .clicked()
+                {
+                    let (tx, rx) = mpsc::channel();
+                    self.notification = Some(rx);
+                    let ctx = ctx.clone();
+                    std::thread::spawn(move || {
+                        let result = crate::alerts::show(
+                            "G502 X Control",
+                            "Battery alerts are ready. This is a test notification.",
+                        )
+                        .map_err(|e| format!("{e:#}"));
+                        let _ = tx.send(result);
+                        ctx.request_repaint();
+                    });
+                }
+            });
+        });
+    }
+    fn save_preferences(&mut self) {
+        match crate::preferences::apply(&self.preferences) {
+            Ok(()) => {
+                self.saved_preferences = self.preferences.clone();
+                self.next_poll = Instant::now();
+                self.settings_message = "Preferences saved.".into();
+            }
+            Err(e) => self.settings_message = format!("Could not save preferences: {e:#}"),
+        }
+    }
     fn sidebar(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("navigation")
             .exact_width(206.0)
@@ -1475,6 +1770,7 @@ impl App {
                     ("Profiles", Icon::Sliders),
                     ("Lighting", Icon::Sun),
                     ("Device & backups", Icon::Shield),
+                    ("Settings", Icon::Settings),
                 ]
                 .iter()
                 .enumerate()
@@ -1589,7 +1885,11 @@ impl App {
                     .inner_margin(egui::Margin::symmetric(26, 14)),
             )
             .show(ctx, |ui| {
-                let dirty = self.dirty();
+                let dirty = if self.tab == 4 {
+                    self.preferences != self.saved_preferences
+                } else {
+                    self.dirty()
+                };
                 ui.horizontal(|ui| {
                     let available = ui.available_width();
                     ui.allocate_ui_with_layout(
@@ -1615,7 +1915,13 @@ impl App {
                                     design::icon(ui.painter(), r, Icon::Check, ACCENT);
                                 }
                             }
-                            let label = if self.busy {
+                            let label = if self.tab == 4 {
+                                if dirty {
+                                    "Unsaved preferences".into()
+                                } else {
+                                    "Preferences saved on this computer".into()
+                                }
+                            } else if self.busy {
                                 "Updating your mouse…".into()
                             } else if self.error {
                                 "Couldn't complete that action".into()
@@ -1641,7 +1947,17 @@ impl App {
                         },
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if dirty {
+                        if self.tab == 4 {
+                            if ui
+                                .add_enabled(dirty, design::primary("Save preferences"))
+                                .clicked()
+                            {
+                                self.save_preferences();
+                            }
+                            if dirty && ui.add(design::secondary("Reset")).clicked() {
+                                self.preferences = self.saved_preferences.clone();
+                            }
+                        } else if dirty {
                             if ui
                                 .add_enabled(!self.busy, design::primary("Save to mouse"))
                                 .clicked()
@@ -1687,15 +2003,91 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         while let Ok(reply) = self.rx.try_recv() {
-            self.busy = false;
-            match reply {
-                Ok(r) => self.accept(r),
+            if reply.automatic {
+                self.poll_pending = false;
+            } else {
+                self.busy = false;
+            }
+            match reply.result {
+                Ok(r) => {
+                    self.last_success = Some(Instant::now());
+                    self.connection_error = None;
+                    self.poll_failures = 0;
+                    if r.full {
+                        self.last_full = Instant::now();
+                    }
+                    if !reply.automatic
+                        || self.saved_preferences.live_updates
+                        || self.snapshot.is_none()
+                    {
+                        self.accept(r, reply.automatic);
+                    } else if let Some(e) = r.notification_error {
+                        self.settings_message = e;
+                    }
+                    let seconds = if self.saved_preferences.live_updates {
+                        self.saved_preferences.refresh_seconds
+                    } else {
+                        60
+                    };
+                    self.next_poll = Instant::now() + Duration::from_secs(seconds);
+                }
                 Err(e) => {
-                    self.message = e;
-                    self.error = true;
+                    self.connection_error = Some(e.clone());
+                    self.poll_failures = self.poll_failures.saturating_add(1);
+                    self.next_poll = Instant::now()
+                        + Duration::from_secs((1u64 << self.poll_failures.min(5)).min(30));
+                    if !reply.automatic {
+                        self.message = e;
+                        self.error = true;
+                    }
                 }
             }
         }
+        if !self.busy
+            && !self.poll_pending
+            && Instant::now() >= self.next_poll
+            && (self.saved_preferences.live_updates || self.saved_preferences.battery_alerts)
+        {
+            let job = Job::Poll {
+                cached: self.snapshot.clone().map(Box::new),
+                full: self.saved_preferences.live_updates
+                    && self.last_full.elapsed() >= Duration::from_secs(30),
+                live: self.saved_preferences.live_updates,
+            };
+            self.poll_pending = self.tx.send(job).is_ok();
+        }
+        if let Some(result) = self.notification.as_ref().and_then(|rx| rx.try_recv().ok()) {
+            self.notification = None;
+            self.settings_message = match result {
+                Ok(()) => {
+                    "Test sent. Your desktop controls notification visibility and sound.".into()
+                }
+                Err(e) => e,
+            };
+        }
+        if Instant::now() >= self.next_background_check {
+            self.background_running = crate::monitor::running().unwrap_or(false);
+            // Tray/CLI changes are reflected without overwriting unsaved preferences.
+            if let Ok(p) = crate::preferences::Preferences::load() {
+                if self.preferences == self.saved_preferences {
+                    self.preferences = p.clone();
+                }
+                self.saved_preferences = p;
+            }
+            self.next_background_check = Instant::now() + Duration::from_secs(2);
+        }
+        if let Ok(dir) = device::state_dir() {
+            let request = dir.join("open-window");
+            if let Ok(value) = std::fs::read_to_string(&request) {
+                let _ = std::fs::remove_file(request);
+                if value == "settings" {
+                    self.tab = 4;
+                }
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            }
+        }
+        ctx.request_repaint_after(Duration::from_millis(500));
         if let Some(result) = self.picker.as_ref().and_then(|rx| rx.try_recv().ok()) {
             self.picker = None;
             match result {
@@ -1730,7 +2122,7 @@ impl eframe::App for App {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
             }
-            if self.snapshot.is_some() && !self.busy && !self.capture_requested {
+            if (self.snapshot.is_some() || self.tab == 4) && !self.busy && !self.capture_requested {
                 self.capture_settle = self.capture_settle.saturating_add(1);
                 if self.capture_settle >= 3
                     && ctx.input(|i| i.time)
@@ -1774,6 +2166,14 @@ impl eframe::App for App {
                             .extra_letter_spacing(0.7),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if self.connection_error.is_some() {
+                            design::pill(ui, "RECONNECTING", design::ERROR);
+                        } else if self.saved_preferences.live_updates && self.last_success.is_some()
+                        {
+                            design::pill(ui, "LIVE", ACCENT);
+                        } else {
+                            design::pill(ui, "LIVE UPDATES OFF", MUTED);
+                        }
                         if let Some(s) = &self.snapshot {
                             design::pill(
                                 ui,
@@ -1791,8 +2191,13 @@ impl eframe::App for App {
                 });
             });
         egui::CentralPanel::default().frame(egui::Frame::new().fill(design::BG).inner_margin(egui::Margin{left:28,right:28,top:14,bottom:20})).show(ctx,|ui|{
-            egui::ScrollArea::vertical().id_salt(("page",self.tab,self.profile_tab)).auto_shrink([false,false]).show(ui,|ui|{ui.add_enabled_ui(!self.busy,|ui|{
-                if self.snapshot.is_some(){match self.tab{0=>self.overview(ui),1=>self.profiles(ui),2=>self.lighting(ui),_=>self.files(ui)}}else{
+            egui::ScrollArea::vertical().id_salt(("page",self.tab,self.profile_tab)).auto_shrink([false,false]).show(ui,|ui|{ui.add_enabled_ui(!self.busy || self.tab == 4,|ui|{
+                if self.tab == 4 { self.settings(ui, ctx); } else if self.snapshot.is_some(){
+                    if let Some(error) = &self.connection_error {
+                        ui.colored_label(design::ERROR, "Connection lost · Showing the last reading. Reconnecting automatically…").on_hover_text(error);
+                        ui.add_space(12.0);
+                    }
+                    match self.tab{0=>self.overview(ui),1=>self.profiles(ui),2=>self.lighting(ui),_=>self.files(ui)}}else{
                     design::title(ui,if self.error{"Let's reconnect"}else{"Getting things ready"},"Connect your G502 X Plus with its USB cable or LIGHTSPEED receiver.");design::card().show(ui,|ui|{let (r,_)=ui.allocate_exact_size(vec2(ui.available_width(),340.0),Sense::hover());design::mouse(ui.painter(),r,&[design::DIM;8],false,None);ui.vertical_centered(|ui|{if self.error{ui.add(egui::Label::new(RichText::new(&self.message).color(design::ERROR)).wrap());if ui.add(design::primary("Try again")).clicked(){self.send(Job::Refresh);}}else{ui.spinner();design::muted(ui,"Reading your saved settings…");}});});
                 }
             });});
@@ -1847,6 +2252,26 @@ if ui.add(design::secondary("Cancel")).clicked(){self.restore_confirm=false;}});
         if self.busy {
             ctx.request_repaint_after(Duration::from_millis(80));
         }
+    }
+}
+fn preference_toggle(ui: &mut egui::Ui, value: &mut bool, label: &str) -> bool {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(label).strong());
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            design::toggle(ui, value, label).changed()
+        })
+        .inner
+    })
+    .inner
+}
+fn merge_live<T: Copy + PartialEq>(
+    current: &mut T,
+    previous: Option<T>,
+    incoming: T,
+    automatic: bool,
+) {
+    if !automatic || previous.is_none_or(|old| old == *current) {
+        *current = incoming;
     }
 }
 fn edit_name(p: &Profile) -> String {
@@ -2029,6 +2454,123 @@ fn feature_name(id: u16) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn sample() -> Snapshot {
+        let mut p = Profile {
+            sector: 1,
+            enabled: true,
+            raw: vec![0; 255],
+        };
+        p.set_name("Original").unwrap();
+        Snapshot {
+            schema: 1,
+            unit_id: "test-device".into(),
+            protocol: "4.2".into(),
+            endpoint: crate::transport::Endpoint {
+                path: "test".into(),
+                product: 0xc095,
+                serial: String::new(),
+                index: 255,
+                name: "test".into(),
+            },
+            features: vec![],
+            layout: device::Layout {
+                memory: 1,
+                format: 5,
+                macro_format: 1,
+                profiles: 1,
+                buttons: 11,
+                sectors: 16,
+                size: 255,
+                g_shift: true,
+            },
+            status: device::Status {
+                battery: 80,
+                charge_status: 0,
+                dpi: 800,
+                rate_ms: 1,
+                mode: 1,
+                active_sector: 1,
+                dpi_index: 0,
+                wheel: 0,
+            },
+            dpi_choices: vec![800, 1600],
+            rate_choices: vec![1, 2],
+            effects: vec![],
+            led_ids: vec![],
+            directory_sector: 0,
+            directory: vec![],
+            profiles: vec![p],
+        }
+    }
+    fn app() -> App {
+        let (tx, _) = mpsc::channel();
+        let (_, rx) = mpsc::channel();
+        App::new(
+            tx,
+            rx,
+            crate::preferences::Preferences::default(),
+            String::new(),
+            false,
+        )
+    }
+    fn incoming(snapshot: Snapshot) -> Reply {
+        Reply {
+            snapshot,
+            message: "Read complete".into(),
+            reset: false,
+            imported: None,
+            full: true,
+            notification_error: None,
+        }
+    }
+    #[test]
+    fn automatic_refresh_preserves_draft_and_original_conflict_baseline() {
+        let mut a = app();
+        a.accept(incoming(sample()), false);
+        a.name = "My unsaved profile".into();
+        let original = a.save_base.as_ref().unwrap().profiles[0].clone();
+        let mut changed = sample();
+        changed.profiles[0].set_name("Changed on mouse").unwrap();
+        changed.status.dpi = 1600;
+        changed.status.battery = 75;
+        a.accept(incoming(changed), true);
+        assert_eq!(a.name, "My unsaved profile");
+        assert_eq!(a.draft.as_ref().unwrap(), &original);
+        assert_eq!(a.save_base.as_ref().unwrap().profiles[0], original);
+        assert!(a.dirty());
+        assert_eq!(
+            a.snapshot.as_ref().unwrap().profiles[0].name(),
+            "Changed on mouse"
+        );
+        assert_eq!(a.live_dpi, 1600);
+        a.select(0); // Explicit discard rebases to the latest device state.
+        assert_eq!(a.name, "Changed on mouse");
+        assert!(!a.dirty());
+    }
+    #[test]
+    fn automatic_refresh_keeps_open_binding_editor_and_pending_live_input() {
+        let mut a = app();
+        a.accept(incoming(sample()), false);
+        a.edit_button = Some(2);
+        a.live_dpi = 1200;
+        let mut updated = sample();
+        updated.status.dpi = 1600;
+        a.accept(incoming(updated), true);
+        assert_eq!(a.edit_button, Some(2));
+        assert_eq!(a.live_dpi, 1200);
+        a.accept(incoming(sample()), false);
+        assert_eq!(a.live_dpi, 800);
+    }
+    #[test]
+    fn clean_profile_tracks_external_profile_changes() {
+        let mut a = app();
+        a.accept(incoming(sample()), false);
+        let mut changed = sample();
+        changed.profiles[0].set_name("External").unwrap();
+        a.accept(incoming(changed), true);
+        assert_eq!(a.name, "External");
+        assert!(!a.dirty());
+    }
     #[test]
     fn factory_name_placeholder_preserves_original_profile_bytes() {
         let mut p = Profile {

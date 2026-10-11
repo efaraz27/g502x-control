@@ -51,6 +51,8 @@ jobs:
         run: cargo check --locked --no-default-features
       - name: Build
         run: cargo build --release --locked
+      - name: Verify background lifecycle
+        run: python scripts/test-monitor.py
       - name: Package Linux
         if: runner.os == 'Linux'
         run: python3 scripts/package.py --platform ${{ matrix.platform }}

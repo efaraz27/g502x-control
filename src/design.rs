@@ -132,6 +132,7 @@ pub fn separator(ui: &mut Ui) {
 
 #[derive(Clone, Copy)]
 pub enum Icon {
+    Settings,
     Mouse,
     Grid,
     Sliders,
@@ -152,6 +153,21 @@ pub fn icon(p: &egui::Painter, r: Rect, which: Icon, color: Color32) {
         ));
     };
     match which {
+        Icon::Settings => {
+            p.circle_stroke(r.center(), r.width() * 0.27, st);
+            p.circle_stroke(r.center(), r.width() * 0.08, st);
+            for n in 0..8 {
+                let a = n as f32 * std::f32::consts::TAU / 8.0;
+                let v = egui::vec2(a.cos(), a.sin());
+                p.line_segment(
+                    [
+                        r.center() + v * r.width() * 0.29,
+                        r.center() + v * r.width() * 0.42,
+                    ],
+                    st,
+                );
+            }
+        }
         Icon::Mouse => {
             p.rect_stroke(
                 Rect::from_min_max(xy(0.25, 0.07), xy(0.75, 0.93)),

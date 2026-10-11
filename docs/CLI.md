@@ -10,6 +10,16 @@ The GUI and CLI use the same binary. On Windows, use PowerShell and `./g502x-con
 ./g502x-control status
 ./g502x-control check
 
+# Preferences, tray and background battery alerts
+./g502x-control --settings
+./g502x-control notify-test
+./g502x-control monitor start             # Enable the tray/background monitor
+./g502x-control monitor start --at-login  # Also register login startup
+./g502x-control monitor status
+./g502x-control monitor quit              # Stop now; retain startup preference
+./g502x-control monitor stop              # Disable background + remove startup
+# --background is used by the login entry and exits if monitoring is disabled.
+
 # Back up before experimenting; the destination must not already exist
 ./g502x-control backup "$HOME/Downloads/g502x-backup.json"
 

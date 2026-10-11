@@ -91,11 +91,26 @@ fn lock() -> Result<File> {
         .mode(0o600)
         .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC);
     let f = options.open(dir.join("device.lock"))?;
-    f.try_lock()
-        .context("Another G502 X Control operation is in progress, or its lock is unavailable")?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    loop {
+        match f.try_lock() {
+            Ok(()) => break,
+            Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(25))
+            }
+            Err(e) => {
+                return Err(anyhow::Error::from(e).context(
+                    "Another G502 X Control operation is in progress, or its lock is unavailable",
+                ));
+            }
+        }
+    }
     Ok(f)
 }
 pub fn state_dir() -> Result<PathBuf> {
+    if let Some(path) = std::env::var_os("G502X_STATE_DIR") {
+        return Ok(PathBuf::from(path));
+    }
     #[cfg(target_os = "windows")]
     let base = PathBuf::from(std::env::var_os("LOCALAPPDATA").context("LOCALAPPDATA is unset")?);
     #[cfg(target_os = "macos")]
@@ -111,6 +126,55 @@ pub fn state_dir() -> Result<PathBuf> {
 }
 
 impl Device {
+    /// Reuse the discovered feature table, but revalidate physical identity.
+    /// The operation lock is held only for this short-lived Device value.
+    pub fn connect_cached(path: Option<&Path>, cached: Option<&Snapshot>) -> Result<Self> {
+        if let Some(cached) = cached {
+            let attempt = (|| -> Result<Self> {
+                let guard = lock()?;
+                let endpoints = transport::discover()?;
+                let preferred = endpoints
+                    .iter()
+                    .find(|e| path.is_none_or(|p| p == e.path))
+                    .context("Mouse disconnected")?;
+                ensure!(
+                    preferred.path == cached.endpoint.path
+                        && preferred.product == cached.endpoint.product,
+                    "Connection changed"
+                );
+                let mut transport = Transport::open(preferred.clone())?;
+                let index = cached
+                    .features
+                    .iter()
+                    .find(|f| f.id == 0x0003)
+                    .context("Missing identity feature")?
+                    .index;
+                let identity = transport.request(index, 0, &[])?;
+                let unit: String = identity[1..5].iter().map(|b| format!("{b:02X}")).collect();
+                ensure!(
+                    identity[7..11] == [0x40, 0x99, 0xc0, 0x95] && unit == cached.unit_id,
+                    "Mouse identity changed"
+                );
+                Ok(Self {
+                    transport,
+                    unit_id: unit,
+                    features: cached.features.clone(),
+                    protocol: cached.protocol.clone(),
+                    _lock: guard,
+                })
+            })();
+            if let Ok(device) = attempt {
+                return Ok(device);
+            }
+        }
+        Self::connect(path)
+    }
+
+    pub fn battery(&mut self) -> Result<(u8, u8)> {
+        let battery = self.call(0x1004, 1, &[])?;
+        ensure!(battery[0] <= 100, "Invalid battery reading");
+        Ok((battery[0], battery[2]))
+    }
     pub fn connect(path: Option<&Path>) -> Result<Self> {
         let guard = lock()?;
         let endpoints = transport::discover()?;
@@ -203,13 +267,13 @@ impl Device {
         Ok(l)
     }
     pub fn status(&mut self) -> Result<Status> {
-        let battery = self.call(0x1004, 1, &[])?;
+        let (battery, charge_status) = self.battery()?;
         let dpi = self.call(0x2201, 2, &[0])?;
         let mode = self.call(0x8100, 2, &[])?[0];
         let active = self.call(0x8100, 4, &[])?;
         Ok(Status {
-            battery: battery[0],
-            charge_status: battery[2],
+            battery,
+            charge_status,
             dpi: if dpi[1..3] == [0, 0] {
                 u16::from_be_bytes([dpi[3], dpi[4]])
             } else {

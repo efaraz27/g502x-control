@@ -36,7 +36,7 @@ python3 scripts/package.py --platform linux-x86_64
 # Also: linux-aarch64, macos-aarch64, macos-x86_64, windows-x86_64
 ```
 
-The script uses standard Python only. Linux and Windows installer smoke tests run in CI, including update/uninstall and corrupt-download checks. Windows builds statically link the C runtime to avoid a separate Visual C++ runtime installation. Linux needs `dpkg-deb`; Windows needs NSIS; macOS uses `hdiutil` and `codesign`. Set `MACOSX_DEPLOYMENT_TARGET=13.0` before building macOS releases. Output goes in `dist/`. Icons are checked in; regenerate from the SVG with `python3 scripts/generate-icons.py` (requires `rsvg-convert`).
+The script uses standard Python only. `python3 scripts/test-monitor.py` exercises the background process and startup lifecycle after building, using isolated state/startup folders (Windows uses the test runner account’s app registry entries). Linux and Windows installer smoke tests run in CI, including update/uninstall and corrupt-download checks. Windows builds statically link the C runtime to avoid a separate Visual C++ runtime installation. Linux needs `dpkg-deb`; Windows needs NSIS; macOS uses `hdiutil` and `codesign`. Set `MACOSX_DEPLOYMENT_TARGET=13.0` before building macOS releases. Output goes in `dist/`. Icons are checked in; regenerate from the SVG with `python3 scripts/generate-icons.py` (requires `rsvg-convert`).
 
 ## Releasing
 

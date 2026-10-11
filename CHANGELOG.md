@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0
+
+- Live device readings, automatic reconnection and protected profile drafts/open editors.
+- Settings for update intervals, native low-battery alerts and a configurable threshold.
+- Optional background monitor with a native tray menu and per-user launch at login.
+- Persistent alert deduplication, charging suppression, hysteresis and retry/cooldown limits.
+- Reopen the existing window from the tray; quit the monitor without losing startup preferences.
+- Monitor lifecycle CLI, notification test, and Windows upgrade/uninstall cleanup.
+
 ## 0.3.0
 
 - Native Windows/macOS HID backends; Windows/macOS hardware support is experimental.

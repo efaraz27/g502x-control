@@ -1,4 +1,4 @@
-A native Rust control panel for the Logitech G502 X Plus, with the redesigned graphite-and-lime interface.
+A native Rust control panel for the Logitech G502 X Plus, with live device data, a system tray, and battery alerts.
 
 ### Downloads
 
@@ -8,7 +8,13 @@ A native Rust control panel for the Logitech G502 X Plus, with the redesigned gr
 
 ### What's included
 
-Five onboard profiles, DPI stages, button assignments with G-Shift, lighting controls, automatic backups, and a CLI. This release adds native Windows/macOS HID access, platform-specific storage and file dialogs, and installers built automatically on all five OS/architecture combinations.
+- **Live UI:** battery, DPI, rate, mode and active-profile readings update automatically. Reconnects are retried and unsaved edits stay intact.
+- **System tray:** optional background battery monitoring, battery status in the tray menu, quick open/settings actions and a quit action.
+- **Login startup:** opt in from Settings to launch quietly when you sign in. No window opens at startup.
+- **Low-battery alerts:** native OS notifications at 20% by default, configurable from 5–50%; no alerts while charging or repeated reminders while low.
+- **Settings:** control polling, alerts, background monitoring and startup; test notifications from the app.
+
+The existing onboard profiles, button/G-Shift assignments, lighting, automatic backups and CLI remain available. Background monitoring and startup are off by default. On Linux, GNOME may need AppIndicator support to show the tray; the battery monitor continues without it.
 
 ### Support status
 

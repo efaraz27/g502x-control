@@ -12,7 +12,7 @@
 
 ![The G502 X Control desktop app](preview.png)
 
-Configure sensitivity, buttons, lighting, and onboard profiles in one focused desktop app. No account, telemetry, subscription, or background service. Your saved onboard settings stay with the mouse.
+Configure sensitivity, buttons, lighting, and onboard profiles in one focused desktop app. No account, telemetry, or subscription. Optional background monitoring keeps battery alerts available after you close the window. Your saved onboard settings stay with the mouse.
 
 > **Compatibility:** Linux has been tested with a real G502 X Plus over USB and LIGHTSPEED. Windows and macOS have native backends and automated builds, but physical-device support is **experimental**. This app supports the **G502 X Plus** specifically; other G502 models are not interchangeable.
 
@@ -58,6 +58,9 @@ A [portable Windows ZIP](https://github.com/efaraz27/g502x-control/releases/late
 - **Lighting** — profile effects, live RGB and eight individually configurable LED segments.
 - **Wheel and power** — wheel direction, high-resolution scrolling, dim/sleep fields and angle snapping.
 - **Backups** — automatic full-memory backup before every flash save or restore; import/export individual profiles.
+- **Live device data** — automatic readings every two seconds, reconnect handling, and protected unsaved drafts.
+- **Tray & startup** — optional windowless battery monitor; launch quietly when you sign in, reopen the control panel from the tray.
+- **Battery alerts** — native desktop notifications at a configurable threshold (20% by default), without repeated low-battery reminders.
 - **Native UI + CLI** — responsive Rust interface, keyboard-accessible controls, file pickers and scriptable commands.
 
 The app opens in read-only mode. Profile edits remain drafts until **Save to mouse**. Live controls have explicit apply buttons. Full restores require confirmation and create a backup first.
@@ -73,7 +76,7 @@ This is an early independent project, not a complete G HUB replacement. It prese
 3. Open **Profiles**, select a slot, and edit **Sensitivity**, **Buttons**, **Lighting** or **Power**.
 4. Choose **Save to mouse**, then **Activate profile** when ready.
 
-Use **Software** mode for live DPI/rate/lighting, and **Onboard** for saved profiles. Live settings can reset after reconnecting, sleeping or switching modes. **Refresh device** rereads the current settings; the app does not poll or reapply them in the background.
+Use **Software** mode for live DPI/rate/lighting, and **Onboard** for saved profiles. Live settings can reset after reconnecting, sleeping or switching modes. The UI updates automatically; live controls are never reapplied automatically. Open **Settings** to change the refresh interval, battery threshold, tray monitor, or launch-at-login option. Background monitoring and startup are off by default.
 
 [Full user guide and troubleshooting](docs/GUIDE.md) · [CLI examples](docs/CLI.md)
 
