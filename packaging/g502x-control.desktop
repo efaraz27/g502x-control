@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=G502 X Control
+Comment=Configure your Logitech G502 X Plus
+Exec=g502x-control
+Icon=g502x-control
+Terminal=false
+Categories=Settings;HardwareSettings;
+StartupWMClass=g502x-control
+Keywords=Logitech;G502;mouse;DPI;RGB;

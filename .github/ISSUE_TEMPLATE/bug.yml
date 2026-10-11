@@ -1,0 +1,31 @@
+name: Bug report
+description: Report a reproducible problem
+body:
+  - type: markdown
+    attributes:
+      value: "Please remove serials, unit IDs and personal paths. Never attach a full mouse backup. Windows/macOS hardware support is experimental."
+  - type: input
+    id: version
+    attributes:
+      label: App version and operating system
+      placeholder: "0.3.0 / Ubuntu 24.04 x86-64"
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection
+      options: [USB cable, LIGHTSPEED receiver, Both connected]
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps and expected behavior
+      description: Include the exact mouse model and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Error text or redacted diagnostics

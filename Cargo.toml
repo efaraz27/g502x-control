@@ -1,0 +1,38 @@
+[package]
+name = "g502x-control"
+version = "0.3.0"
+edition = "2024"
+rust-version = "1.92"
+description = "A native control panel for the Logitech G502 X Plus"
+license = "GPL-2.0-or-later"
+repository = "https://github.com/efaraz27/g502x-control"
+readme = "README.md"
+
+[features]
+default = ["gui"]
+gui = ["dep:eframe", "dep:image", "dep:rfd"]
+
+[dependencies]
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+clap = { version = "4.6", features = ["derive"] }
+eframe = { version = "0.33", optional = true, default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+image = { version = "0.25", optional = true, default-features = false, features = ["png"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+hidapi = { version = "2.6.7", default-features = false, features = ["macos-shared-device", "windows-native"] }
+rfd = { version = "0.17.2", optional = true, default-features = false }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+
+[profile.release]
+lto = "thin"
+strip = true
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"

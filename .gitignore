@@ -1,0 +1,14 @@
+/target/
+/dist/
+/g502x-control
+/g502x-control.exe
+*.log
+.DS_Store
+Thumbs.db
+# Backups and diagnostics contain device-specific identifiers.
+*backup*.json
+*snapshot*.json
+.env
+.env.*
+__pycache__/
+*.pyc

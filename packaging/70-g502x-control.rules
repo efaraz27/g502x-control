@@ -1,0 +1,5 @@
+# USB cable: active desktop-session access to G502 X Plus hidraw interfaces.
+SUBSYSTEM=="hidraw", KERNEL=="hidraw*", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c095", TAG+="uaccess"
+# LIGHTSPEED receiver and its paired G502 X Plus HID node.
+SUBSYSTEM=="hidraw", KERNEL=="hidraw*", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c547", TAG+="uaccess"
+SUBSYSTEM=="hidraw", KERNEL=="hidraw*", KERNELS=="0003:046D:4099.*", TAG+="uaccess"

@@ -1,0 +1,32 @@
+G502 X Control
+Copyright (C) 2026
+SPDX-License-Identifier: GPL-2.0-or-later
+
+This Rust implementation uses protocol structures and behavior described by
+Solaar and libratbag. In particular, profile offsets, binding encodings,
+HID++ feature calls, CRC behavior, and RGB preparation follow their sources.
+
+Solaar: https://github.com/pwr-Solaar/Solaar
+GPL-2.0-or-later. Copyright Daniel Pavel and the Solaar contributors.
+Reference commit: e7304c4c451cc9bb4f206a914844525e67856a28
+Relevant source paths:
+  lib/logitech_receiver/hidpp20.py
+  lib/logitech_receiver/settings_templates.py
+  lib/logitech_receiver/rgb_power.py
+  lib/logitech_receiver/common.py
+
+libratbag: https://github.com/libratbag/libratbag
+MIT license. Copyright the libratbag contributors.
+Reference commit: 8235b5bb6032dea15901ab58a8218956f4494d08
+Relevant source paths:
+  src/hidpp20.c
+  src/hidpp20.h
+  src/driver-hidpp20.c
+  data/devices/logitech-g502-x-plus.device
+
+Rust dependencies retain their own licenses. They are identified and pinned
+in Cargo.lock; their source and license files are available through Cargo.
+
+The bundled Adwaita Sans font is licensed under the SIL Open Font License 1.1.
+Copyright the Inter Project Authors, Renzhi Li, Jamie Gravendeel and
+Florian Müllner. The complete notices and license are in assets/FONT-LICENSE.
