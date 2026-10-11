@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Smoke-test the Windows installer and portable release on a Windows runner."""
 import os
+import json
+import time
 from pathlib import Path
 import struct
 import subprocess
@@ -46,11 +48,33 @@ with tempfile.TemporaryDirectory(prefix='g502x-install-') as temp:
     setup = ROOT/'dist/g502x-control-windows-x86_64-setup.exe'
     # NSIS /D must be the last argument and its directory must be unquoted.
     command = subprocess.list2cmdline([str(setup),'/S'])+' /D='+str(installed)
-    subprocess.run(command, check=True, timeout=60)
+    env = dict(os.environ, G502X_STATE_DIR=str(temp/'state'))
+    subprocess.run(command, env=env, check=True, timeout=60)
     assert (installed/'g502x-control.exe').is_file()
     assert 'g502x-control ' in subprocess.check_output([str(installed/'g502x-control.exe'),'--version'],text=True)
     assert (installed/'Uninstall.exe').is_file()
+    def cli(*args):
+        return subprocess.check_output([str(portable), *args], env=env, text=True, timeout=30)
+    def wait_running():
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            status = json.loads(cli('monitor', 'status'))
+            if status['running']:
+                return status
+            time.sleep(.1)
+        raise AssertionError('Installed monitor did not restart')
+    try:
+        subprocess.run([str(installed/'g502x-control.exe'), 'monitor', 'start', '--at-login'], env=env, check=True, timeout=30)
+        wait_running()
+        subprocess.run(command, env=env, check=True, timeout=60)
+        current = wait_running()
+        assert current['preferences']['background_enabled'] and current['startup_registered']
+    except BaseException:
+        cli('monitor', 'stop')
+        raise
     command = subprocess.list2cmdline([str(installed/'Uninstall.exe'),'/S'])+' _?='+str(installed)
-    subprocess.run(command,check=True,timeout=60)
+    subprocess.run(command,env=env,check=True,timeout=60)
     assert not (installed/'g502x-control.exe').exists()
-    print('PASS: portable version, static CRT, silent install, installed version and uninstall')
+    current = json.loads(cli('monitor', 'status'))
+    assert not current['running'] and not current['startup_registered']
+    print('PASS: portable version, static CRT, silent install, running-monitor upgrade, preserved startup and uninstall cleanup')

@@ -52,6 +52,7 @@ jobs:
       - name: Build
         run: cargo build --release --locked
       - name: Verify background lifecycle
+        timeout-minutes: 3
         run: python scripts/test-monitor.py
       - name: Package Linux
         if: runner.os == 'Linux'

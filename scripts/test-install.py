@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Exercise Linux per-user installation without changing the user's home."""
 import hashlib
+import json
+import time
 import os
 from pathlib import Path
 import subprocess
@@ -16,10 +18,27 @@ with tempfile.TemporaryDirectory(prefix='g502x install test ') as temp:
         archive.extractall(scratch/'extracted', filter='data')
     app = scratch/'extracted/g502x-control'
     prefix = scratch/'prefix with spaces'
-    env = dict(os.environ, G502X_INSTALL_PREFIX=str(prefix))
-    for _ in range(2):  # Verify first install and replacement/update.
-        subprocess.run(['sh', str(app/'install.sh')], env=env, check=True)
+    env = dict(os.environ, G502X_INSTALL_PREFIX=str(prefix), G502X_STATE_DIR=str(scratch/'state'), G502X_AUTOSTART_DIR=str(scratch/'startup'))
     installed = prefix/'bin/g502x-control'
+    subprocess.run(['sh', str(app/'install.sh')], env=env, check=True)
+    def cli(*args):
+        return subprocess.check_output([str(installed), *args], env=env, text=True, timeout=30)
+    def wait_running():
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            status = json.loads(cli('monitor', 'status'))
+            if status['running']:
+                return status
+            time.sleep(.1)
+        raise AssertionError('Monitor did not restart')
+    try:
+        cli('monitor', 'start', '--at-login')
+        wait_running()
+        subprocess.run(['sh', str(app/'install.sh')], env=env, check=True)
+        current = wait_running()
+        assert current['preferences']['background_enabled'] and current['startup_registered']
+    finally:
+        cli('monitor', 'stop')
     assert hashlib.sha256(installed.read_bytes()).digest() == hashlib.sha256((app/'g502x-control').read_bytes()).digest()
     version = subprocess.check_output([str(installed), '--version'], text=True)
     assert version.startswith('g502x-control '), version
@@ -50,4 +69,4 @@ esac
     failed = subprocess.run(['sh', str(ROOT/'install.sh')], env=env, capture_output=True, text=True)
     assert failed.returncode != 0, 'Corrupt archive unexpectedly accepted'
     assert not invalid_prefix.exists(), 'Installer ran before checksum verification'
-    print('PASS: first install, update, paths with spaces, version and corrupt-download rejection')
+    print('PASS: first install, update with running tray, preserved startup, paths with spaces, version and corrupt-download rejection')

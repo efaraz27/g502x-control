@@ -64,7 +64,7 @@ Windows/macOS device communication is experimental until real hardware validatio
 
 ## Updating and uninstalling
 
-Before replacing or removing the app, close the window and quit the tray monitor. Before uninstalling on Linux/macOS, turn off background monitoring in Settings and save, or run `g502x-control monitor stop`; this also removes login startup. The Windows installer stops the monitor during upgrades and removes its startup entry during uninstall.
+Before replacing or removing the app, close the window and quit the tray monitor. Before uninstalling on Linux/macOS, turn off background monitoring in Settings and save, or run `g502x-control monitor stop`; this also removes login startup. The Windows and per-user Linux installers stop the monitor during upgrades and restart it if already enabled. Windows also removes its startup entry during uninstall.
 
 
 - **Windows:** run the newer setup wizard. Uninstall through Installed apps. Backups are retained.

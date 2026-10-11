@@ -11,6 +11,12 @@ fi
 app_prefix=${G502X_INSTALL_PREFIX:-"$HOME/.local"}
 mkdir -p "$app_prefix/bin"
 app_prefix=$(CDPATH= cd -- "$app_prefix" && pwd)
+# Older releases have no monitor command; their error is harmless.
+# Stop the resident before replacing its executable so tray actions cannot point
+# at an unlinked binary. The quit command preserves background/startup preferences.
+if [ -x "$app_prefix/bin/g502x-control" ]; then
+    "$app_prefix/bin/g502x-control" monitor quit >/dev/null 2>&1 || true
+fi
 app_tmp_bin=$(mktemp "$app_prefix/bin/.g502x-control.XXXXXX")
 trap 'rm -f -- "$app_tmp_bin"' EXIT HUP INT TERM
 install -m755 "$app_bin" "$app_tmp_bin"
@@ -33,6 +39,8 @@ DESKTOP
 if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database "$app_prefix/share/applications" || true
 fi
+# A disabled background preference makes this exit without starting a monitor.
+"$app_prefix/bin/g502x-control" --background >/dev/null 2>&1 &
 printf '%s\n' 'Installed. Open G502 X Control from your application menu.'
 if [ ! -f /etc/udev/rules.d/70-g502x-control.rules ] && [ ! -f /usr/lib/udev/rules.d/70-g502x-control.rules ]; then
     printf '\n%s\n' 'If the app reports permission denied, enable mouse access once:'

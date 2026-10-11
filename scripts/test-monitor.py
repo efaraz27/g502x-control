@@ -24,6 +24,7 @@ with tempfile.TemporaryDirectory(prefix='g502x monitor test ') as temp:
     state = Path(temp) / 'state'
     env = dict(os.environ, G502X_STATE_DIR=str(state), G502X_AUTOSTART_DIR=str(Path(temp)/'startup'))
     def run(*args):
+        print('Checking:', ' '.join(args), flush=True)
         return subprocess.check_output([str(binary), *args], env=env, text=True, timeout=30)
     def status():
         return json.loads(run('monitor', 'status'))
@@ -43,7 +44,7 @@ with tempfile.TemporaryDirectory(prefix='g502x monitor test ') as temp:
         run('monitor', 'quit')
         assert not status()['running']
         assert status()['preferences']['launch_at_login']
-        child = subprocess.Popen([str(binary), '--background'], env=env)
+        child = subprocess.Popen([str(binary), '--background'], env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             until(lambda: status()['running'])
             run('monitor', 'stop')

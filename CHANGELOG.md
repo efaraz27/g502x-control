@@ -7,7 +7,7 @@
 - Optional background monitor with a native tray menu and per-user launch at login.
 - Persistent alert deduplication, charging suppression, hysteresis and retry/cooldown limits.
 - Reopen the existing window from the tray; quit the monitor without losing startup preferences.
-- Monitor lifecycle CLI, notification test, and Windows upgrade/uninstall cleanup.
+- Monitor lifecycle CLI, notification test, and Windows/Linux upgrade handling and Windows uninstall cleanup.
 
 ## 0.3.0
 
