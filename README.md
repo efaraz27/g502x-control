@@ -1,11 +1,11 @@
 <div align="center">
   <img src="packaging/g502x-control.svg" width="88" alt="G502 X Control icon">
   <h1>G502 X Control</h1>
-  <p><strong>Your mouse. Your settings.</strong><br>A native, open-source control panel for the Logitech G502 X Plus, built in Rust.</p>
+  <p>A native, open-source control panel for the Logitech G502 X Plus, built in Rust.</p>
   <p>
-    <a href="https://github.com/efaraz27/g502x-control/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/efaraz27/g502x-control?color=cdf482&labelColor=202428"></a>
+    <a href="https://github.com/efaraz27/g502x-control/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/efaraz27/g502x-control?color=3458a6&labelColor=202428"></a>
     <a href="https://github.com/efaraz27/g502x-control/actions/workflows/build.yml"><img alt="Build status" src="https://github.com/efaraz27/g502x-control/actions/workflows/build.yml/badge.svg"></a>
-    <a href="LICENSE"><img alt="License GPL 2.0 or later" src="https://img.shields.io/badge/license-GPL--2.0--or--later-cdf482?labelColor=202428"></a>
+    <a href="LICENSE"><img alt="License GPL 2.0 or later" src="https://img.shields.io/badge/license-GPL--2.0--or--later-3458a6?labelColor=202428"></a>
   </p>
   <p><a href="#install">Download</a> · <a href="#features">Features</a> · <a href="docs/GUIDE.md">User guide</a> · <a href="CONTRIBUTING.md">Contribute</a></p>
 </div>

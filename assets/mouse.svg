@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 300 400">
+  <!-- Original diagram, drawn for G502 X Control. Shared coordinates with design.rs. -->
+  <defs>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#53575b"/><stop offset=".4" stop-color="#212428"/><stop offset="1" stop-color="#111316"/>
+    </linearGradient>
+    <linearGradient id="left" x1="0" y1="0" x2="1" y2=".4">
+      <stop stop-color="#494d51"/><stop offset=".55" stop-color="#34383c"/><stop offset="1" stop-color="#272b2f"/>
+    </linearGradient>
+    <linearGradient id="right" x1="0" y1="0" x2="1" y2=".6">
+      <stop stop-color="#41454a"/><stop offset=".75" stop-color="#2c3034"/><stop offset="1" stop-color="#202327"/>
+    </linearGradient>
+    <radialGradient id="palm" cx=".54" cy=".2" r=".9">
+      <stop stop-color="#393d41"/><stop offset=".65" stop-color="#25282c"/><stop offset="1" stop-color="#181b1e"/>
+    </radialGradient>
+    <linearGradient id="wheel" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#303338"/><stop offset=".28" stop-color="#989b9d"/><stop offset=".6" stop-color="#63686c"/><stop offset="1" stop-color="#282c30"/>
+    </linearGradient>
+    <pattern id="grip" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(-30)">
+      <path d="M0 0V4" stroke="#757a7d" stroke-width=".6" opacity=".28"/>
+    </pattern>
+  </defs>
+  <g transform="translate(30 10)" stroke-linejoin="round" stroke-linecap="round">
+    <!-- Asymmetric chassis and the projecting thumb rest. -->
+    <path d="M84 32L143 18Q167 24 184 45C199 90 205 132 203 171C201 205 210 228 210 254Q211 291 191 321C185 348 168 359 141 360Q103 360 87 339C74 320 72 299 63 288L40 270Q35 267 38 251L49 197Q52 173 60 156L72 53Q75 37 84 32Z" fill="url(#edge)" stroke="#191d20" stroke-width="1.3"/>
+    <path d="M58 166Q51 199 41 251Q38 264 42 267L65 285Q70 282 71 271L64 216Z" fill="#25292d" stroke="#484d51" stroke-width=".8"/>
+    <path d="M58 171L65 220L73 274L66 282L42 265L45 240Z" fill="url(#grip)"/>
+    <!-- Palm shell, with a restrained bevel around the heel. -->
+    <path d="M65 218L111 201L150 188L200 171Q197 206 204 237C211 267 201 291 187 315Q184 350 142 355Q105 357 91 334C80 315 78 297 68 280Z" fill="url(#palm)" stroke="#40454a" stroke-width=".8"/>
+    <path d="M94 336Q113 356 142 355Q174 353 186 332" fill="none" stroke="#53575a" stroke-opacity=".25"/>
+    <!-- Separate click plates; the center spine contains the wheel and mode keys. -->
+    <path d="M86 34L110 27L111 201L66 219Q58 201 59 179L69 108L78 45Q80 37 86 34Z" fill="url(#left)" stroke="#15181b" stroke-width="1.5"/>
+    <path d="M146 21L181 44C193 79 201 123 200 169L151 187L147 52Z" fill="url(#right)" stroke="#15181b" stroke-width="1.5"/>
+    <path d="M84 36L108 29M148 23L180 46" fill="none" stroke="#72767a" stroke-width="1" stroke-opacity=".65"/>
+    <path d="M113 27L142 19L149 207Q149 213 143 215L118 222Q114 223 114 217Z" fill="url(#right)" stroke="#111417" stroke-width="1.5"/>
+    <!-- Tiny status LED and a recessed, ribbed metal scroll wheel. -->
+    <path d="M122 55L134 52" stroke="#6a8a77" stroke-width="2.5"/>
+    <rect x="119" y="76" width="22" height="61" rx="9" fill="#101215" stroke="#4a4f53" stroke-width=".8"/>
+    <rect x="123" y="81" width="14" height="51" rx="6" fill="url(#wheel)" stroke="#1b1f22"/>
+    <path d="M125 85H135M124 89H136M124 93H136M124 97H136M124 101H136M124 105H136M124 109H136M124 113H136M124 117H136M124 121H136M125 125H135" fill="none" stroke="#171a1d" stroke-opacity=".7" stroke-width="1.1"/>
+    <rect x="123" y="146" width="18" height="51" rx="6" fill="#14171a" stroke="#4a4e52" stroke-width=".7"/>
+    <path d="M126 150Q132 147 138 150V167L126 171Z" fill="#595e62" stroke="#24282c"/>
+    <path d="M126 176L138 172V190Q132 195 126 192Z" fill="#51565b" stroke="#22262a"/>
+    <path d="M129 155H135M129 159H135M129 181H135M129 185H135" stroke="#272c30" stroke-width="1"/>
+    <!-- DPI keys along the left click plate and the two thumb keys. -->
+    <path d="M77 44L83 39L76 100L66 104L71 64Q73 49 77 44Z" fill="#5a5f63" stroke="#15191c" stroke-width="1.4"/>
+    <path d="M65 110L75 105L68 169L61 181L57 168Z" fill="#4d5357" stroke="#161a1d" stroke-width="1.4"/>
+    <path d="M56 178L62 173L65 198L53 208Z" fill="#464c50" stroke="#14171a"/>
+    <path d="M51 215L64 204L66 232L48 242Z" fill="#3a4044" stroke="#14171a"/>
+    <path d="M42 253L61 241L65 265L44 270Z" fill="#454b50" stroke="#161a1d"/>
+    <!-- The live eight-segment overlay is drawn on this recessed light channel. -->
+    <path d="M68 232C73 290 89 294 145 296C181 297 184 288 196 238" fill="none" stroke="#111519" stroke-width="6"/>
+    <path d="M68 232C73 290 89 294 145 296C181 297 184 288 196 238" fill="none" stroke="#545b61" stroke-width="2.4"/>
+    <path d="M180 290Q183 308 188 322" fill="none" stroke="#161b20" stroke-width="3"/>
+    <!-- Small model mark instead of an oversized imitation logo. -->
+    <text x="124" y="253" text-anchor="middle" fill="#757c82" font-family="sans-serif" font-size="9" letter-spacing="1.4">G502 X</text>
+  </g>
+</svg>

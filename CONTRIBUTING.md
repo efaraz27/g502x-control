@@ -38,6 +38,12 @@ python3 scripts/package.py --platform linux-x86_64
 
 The script uses standard Python only. `python3 scripts/test-monitor.py` exercises the background process and startup lifecycle after building, using isolated state/startup folders (Windows uses the test runner account’s app registry entries). Linux and Windows installer smoke tests run in CI, including update/uninstall and corrupt-download checks. Windows builds statically link the C runtime to avoid a separate Visual C++ runtime installation. Linux needs `dpkg-deb`; Windows needs NSIS; macOS uses `hdiutil` and `codesign`. Set `MACOSX_DEPLOYMENT_TARGET=13.0` before building macOS releases. Output goes in `dist/`. Icons are checked in; regenerate from the SVG with `python3 scripts/generate-icons.py` (requires `rsvg-convert`).
 
+## UI artwork and captures
+
+The original device drawing lives in `assets/mouse.svg`. Regenerate its bundled PNG with `python3 scripts/generate-mouse.py` (requires `rsvg-convert`). The LED curves and button callouts in `src/design.rs` use the same 300 × 400 coordinate system. Keep those aligned when changing the drawing.
+
+For a native screenshot, set `G502X_CAPTURE=/absolute/path.png`, `G502X_CAPTURE_TAB=0` (0–4), and optionally `G502X_CAPTURE_SECTION=1` for a profile subtab. `G502X_CAPTURE_SIZE=1120x800` fixes capture dimensions; the supported minimum is 840 × 640. The capture window ignores pointer input and closes once the device read and layout have settled. Use an isolated `G502X_STATE_DIR` to avoid starting a test monitor from a development binary. Capture mode still requires a connected mouse, except on Settings.
+
 ## Releasing
 
 1. Update the Cargo version, lockfile, changelog and `docs/RELEASE.md`.

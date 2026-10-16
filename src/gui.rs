@@ -3,7 +3,7 @@ use crate::{
     profile::{self, Profile},
 };
 use anyhow::Result;
-use eframe::egui::{self, Align2, Color32, FontId, Rect, RichText, Sense, Stroke, pos2, vec2};
+use eframe::egui::{self, Color32, RichText, Sense, Stroke, vec2};
 #[path = "design.rs"]
 mod design;
 use design::{ACCENT, DIM, Icon, MUTED, TEXT};
@@ -289,13 +289,30 @@ pub fn run(path: Option<PathBuf>, settings: bool) -> Result<()> {
         height: icon.height(),
         rgba: icon.into_raw(),
     };
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title("G502 X Control")
+        .with_app_id("g502x-control")
+        .with_icon(icon)
+        .with_inner_size([1240.0, 860.0])
+        .with_min_inner_size([840.0, 640.0]);
+    if std::env::var_os("G502X_CAPTURE").is_some() {
+        viewport = viewport.with_active(false).with_mouse_passthrough(true);
+    }
+    // Deterministic capture dimensions, without changing the user's window-manager settings.
+    if std::env::var_os("G502X_CAPTURE").is_some()
+        && let Ok(size) = std::env::var("G502X_CAPTURE_SIZE")
+        && let Some((w, h)) = size.split_once('x')
+        && let (Ok(w), Ok(h)) = (w.parse::<u32>(), h.parse::<u32>())
+    {
+        let size = [w.clamp(840, 2560) as f32, h.clamp(640, 1600) as f32];
+        viewport = viewport
+            .with_inner_size(size)
+            .with_min_inner_size(size)
+            .with_max_inner_size(size)
+            .with_resizable(false);
+    }
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("G502 X Control")
-            .with_app_id("g502x-control")
-            .with_icon(icon)
-            .with_inner_size([1240.0, 860.0])
-            .with_min_inner_size([840.0, 640.0]),
+        viewport,
         ..Default::default()
     };
     eframe::run_native(
@@ -607,111 +624,43 @@ impl App {
     }
     fn overview(&mut self, ui: &mut egui::Ui) {
         let s = self.snapshot.as_ref().unwrap().clone();
-        design::title(ui, "Overview", "Your setup, at a glance.");
-        let mut to_profiles = false;
-        design::card().inner_margin(0).show(ui, |ui| {
-            let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 270.0), Sense::hover());
-            let p = ui.painter_at(r);
-            let left = r.left() + 28.0;
-            p.text(
-                pos2(left, r.top() + 30.0),
-                Align2::LEFT_TOP,
-                "YOUR DEVICE",
-                FontId::proportional(10.0),
-                MUTED,
-            );
-            p.text(
-                pos2(left, r.top() + 57.0),
-                Align2::LEFT_TOP,
-                "G502 X",
-                FontId::proportional(42.0),
-                TEXT,
-            );
-            p.text(
-                pos2(left, r.top() + 102.0),
-                Align2::LEFT_TOP,
-                "PLUS",
-                FontId::proportional(42.0),
-                ACCENT,
-            );
-            p.text(
-                pos2(left, r.top() + 167.0),
-                Align2::LEFT_TOP,
-                "Make every movement yours.",
-                FontId::proportional(13.0),
-                MUTED,
-            );
-            let status = if s.status.mode == 1 {
-                format!("Onboard memory  /  Profile {}", s.status.active_sector)
-            } else {
-                format!("Live settings  /  {}", connection(&s))
-            };
-            p.text(
-                pos2(left, r.bottom() - 32.0),
-                Align2::LEFT_CENTER,
-                status,
-                FontId::proportional(11.0),
-                DIM,
-            );
-            let hero = Rect::from_min_max(
-                pos2(r.left() + r.width() * 0.48, r.top() + 7.0),
-                pos2(r.right() - 20.0, r.bottom() - 7.0),
-            );
-            // The overview illustration is decorative; actual lighting is edited on its own page.
-            design::mouse(&p, hero, &[ACCENT; 8], false, None);
-            let link = Rect::from_min_size(pos2(left, r.top() + 198.0), vec2(152.0, 30.0));
-            let response = ui.put(
-                link,
-                egui::Button::new(
-                    RichText::new("Customize profiles  →")
-                        .size(12.0)
-                        .color(ACCENT),
-                )
-                .fill(Color32::TRANSPARENT)
-                .stroke(Stroke::NONE),
-            );
-            to_profiles = response.clicked();
+        design::title(ui, "G502 X Plus", "Device overview");
+        design::panel(ui, |ui| {
+            ui.columns(3, |cols| {
+                design::metric(
+                    &mut cols[0],
+                    "Sensitivity",
+                    &s.status.dpi.to_string(),
+                    "DPI",
+                    "Current resolution",
+                );
+                design::metric(
+                    &mut cols[1],
+                    "Polling rate",
+                    &(1000 / s.status.rate_ms.max(1) as u16).to_string(),
+                    "Hz",
+                    &format!("{} ms report interval", s.status.rate_ms),
+                );
+                design::metric(
+                    &mut cols[2],
+                    "Battery",
+                    &s.status.battery.to_string(),
+                    "%",
+                    if (1..=4).contains(&s.status.charge_status) {
+                        "Charging"
+                    } else {
+                        "On battery"
+                    },
+                );
+            });
         });
-        if to_profiles {
-            self.tab = 1;
-        }
-        ui.add_space(4.0);
-        ui.columns(3, |cols| {
-            design::metric(
-                &mut cols[0],
-                "SENSITIVITY",
-                &s.status.dpi.to_string(),
-                "DPI",
-                "Sensor resolution",
-                Icon::Sliders,
-            );
-            design::metric(
-                &mut cols[1],
-                "POLLING RATE",
-                &(1000 / s.status.rate_ms.max(1) as u16).to_string(),
-                "Hz",
-                &format!("{} ms report interval", s.status.rate_ms),
-                Icon::Radio,
-            );
-            design::metric(
-                &mut cols[2],
-                "BATTERY",
-                &s.status.battery.to_string(),
-                "%",
-                if (1..=4).contains(&s.status.charge_status) {
-                    "Charging"
-                } else {
-                    "On battery"
-                },
-                Icon::Battery,
-            );
-        });
-        ui.add_space(8.0);
+        ui.add_space(12.0);
+        ui.strong("Configuration");
         design::panel(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
                     ui.strong("Control mode");
-                    design::muted(ui, "Choose where your settings live.");
+                    design::muted(ui, "Use saved profiles or live software settings.");
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if design::tab(ui, "Software", s.status.mode == 2).clicked()
@@ -729,20 +678,9 @@ impl App {
             design::separator(ui);
             if s.status.mode == 1 {
                 ui.horizontal(|ui| {
-                    design::eyebrow(
-                        ui,
-                        &format!("PROFILE {} · DPI STAGES", s.status.active_sector),
-                    );
+                    ui.label(format!("Profile {}", s.status.active_sector));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui
-                            .add(
-                                egui::Button::new(
-                                    RichText::new("Edit profile →").size(12.0).color(ACCENT),
-                                )
-                                .frame(false),
-                            )
-                            .clicked()
-                        {
+                        if ui.add(design::secondary("Edit profile")).clicked() {
                             if !self.dirty() {
                                 let i = s
                                     .profiles
@@ -761,23 +699,24 @@ impl App {
                     .find(|p| p.sector == s.status.active_sector)
                 {
                     ui.horizontal_wrapped(|ui| {
+                        design::muted(ui, "DPI stages");
                         for (i, dpi) in p.dpis().iter().enumerate() {
                             if *dpi > 0
-                                && design::tab(
-                                    ui,
-                                    &format!("{dpi} DPI"),
-                                    s.status.dpi_index == i as u8,
-                                )
-                                .clicked()
+                                && design::tab(ui, &format!("{dpi}"), s.status.dpi_index == i as u8)
+                                    .clicked()
                             {
                                 self.send(Job::Stage(i as u8));
                             }
                         }
                     });
                 }
-                design::muted(ui, "Saved in the mouse. Your setup travels with you.");
+                design::muted(
+                    ui,
+                    "Onboard settings remain available when this app is closed.",
+                );
             } else {
                 ui.horizontal_wrapped(|ui| {
+                    design::muted(ui, "Sensitivity");
                     ui.add(
                         egui::DragValue::new(&mut self.live_dpi)
                             .speed(50)
@@ -787,6 +726,7 @@ impl App {
                     if ui.add(design::secondary("Apply DPI")).clicked() {
                         self.send(Job::Dpi(self.live_dpi));
                     }
+                    ui.add_space(10.0);
                     rate_combo(ui, "live-rate", &mut self.live_rate, &s.rate_choices);
                     if ui.add(design::secondary("Apply rate")).clicked() {
                         self.send(Job::Rate(self.live_rate));
@@ -794,14 +734,29 @@ impl App {
                 });
                 design::muted(
                     ui,
-                    "Live settings can reset when the mouse reconnects or changes mode.",
+                    "Software settings may reset after reconnecting or changing modes.",
                 );
             }
         });
-        ui.add_space(4.0);
+        ui.add_space(12.0);
+        ui.strong("Scroll wheel");
         design::panel(ui, |ui| {
+            if ui.available_width() >= 660.0 {
+                ui.columns(2, |cols| {
+                    preference_toggle(&mut cols[0], &mut self.reverse, "Reverse direction");
+                    preference_toggle(&mut cols[1], &mut self.hires, "High-resolution scrolling");
+                });
+            } else {
+                preference_toggle(ui, &mut self.reverse, "Reverse direction");
+                design::separator(ui);
+                preference_toggle(ui, &mut self.hires, "High-resolution scrolling");
+            }
+            design::separator(ui);
             ui.horizontal(|ui| {
-                ui.strong("Scroll wheel");
+                design::muted(
+                    ui,
+                    "Use the physical wheel switch for free-spin or ratchet mode.",
+                );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui
                         .add_enabled(
@@ -815,21 +770,28 @@ impl App {
                     }
                 });
             });
-            ui.columns(2, |cols| {
-                cols[0].horizontal(|ui| {
-                    design::toggle(ui, &mut self.reverse, "Reverse scrolling");
-                    ui.label("Reverse direction");
-                });
-                cols[1].horizontal(|ui| {
-                    design::toggle(ui, &mut self.hires, "High-resolution scrolling");
-                    ui.label("High resolution");
-                });
-            });
-            ui.label(
-                RichText::new("Free-spin and ratchet mode use the physical wheel switch.")
-                    .size(11.0)
-                    .color(DIM),
+        });
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            design::muted(
+                ui,
+                format!(
+                    "{} onboard profiles · {} assignable buttons",
+                    s.profiles.len(),
+                    s.layout.buttons
+                ),
             );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui
+                    .add(
+                        egui::Button::new(RichText::new("Manage profiles →").color(ACCENT))
+                            .frame(false),
+                    )
+                    .clicked()
+                {
+                    self.tab = 1;
+                }
+            });
         });
     }
     fn profiles(&mut self, ui: &mut egui::Ui) {
@@ -838,18 +800,17 @@ impl App {
         design::title(
             ui,
             "Onboard profiles",
-            "Five setups. One mouse. Ready wherever you go.",
+            "Stored in your mouse. Select a slot to edit its settings.",
         );
-        let gap = 8.0;
-        let w = (ui.available_width() - gap * 4.0) / 5.0;
+        let w = (ui.available_width() - 24.0) / s.profiles.len().max(1) as f32;
         ui.scope(|ui| {
-            ui.spacing_mut().item_spacing.x = gap;
+            ui.spacing_mut().item_spacing.x = 6.0;
             ui.horizontal(|ui| {
                 for (i, p) in s.profiles.iter().enumerate() {
                     let chosen = i == self.selected;
-                    let active = s.status.active_sector == p.sector;
+                    let active = s.status.mode == 1 && s.status.active_sector == p.sector;
                     let label = format!(
-                        "Profile {}\n{}",
+                        "{}  {}",
                         i + 1,
                         if active {
                             "Active"
@@ -866,7 +827,7 @@ impl App {
                             MUTED
                         }))
                         .fill(if chosen {
-                            Color32::from_rgb(42, 51, 34)
+                            design::SELECTED
                         } else {
                             design::SURFACE
                         })
@@ -874,9 +835,9 @@ impl App {
                             1.0,
                             if chosen { ACCENT } else { design::BORDER },
                         ))
-                        .corner_radius(11);
+                        .corner_radius(5);
                     if ui
-                        .add_enabled(!dirty || chosen, button.min_size(vec2(w, 66.0)))
+                        .add_enabled(!dirty || chosen, button.min_size(vec2(w, 40.0)))
                         .on_disabled_hover_text(
                             "Save or discard your current edits before changing profiles.",
                         )
@@ -887,34 +848,35 @@ impl App {
                 }
             });
         });
-        ui.add_space(4.0);
-        design::panel(ui, |ui| {
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
             let p = self.draft.as_mut().unwrap();
-            ui.horizontal(|ui| {
-                ui.vertical(|ui| {
-                    design::eyebrow(ui, "PROFILE NAME");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.name)
-                            .hint_text(format!("Profile {}", self.selected + 1))
-                            .desired_width((ui.available_width() - 120.0).max(160.0)),
-                    );
-                });
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    design::toggle(ui, &mut p.enabled, "Enable this profile");
-                    ui.label(RichText::new("Enabled").size(12.0).color(MUTED));
-                });
+            design::muted(ui, "Name");
+            let width = (ui.available_width() - 150.0).clamp(150.0, 380.0);
+            ui.add(
+                egui::TextEdit::singleline(&mut self.name)
+                    .hint_text(format!("Profile {}", self.selected + 1))
+                    .desired_width(width)
+                    .margin(vec2(10.0, 8.0)),
+            );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                design::toggle(ui, &mut p.enabled, "Enable this profile");
+                design::muted(ui, "Enabled");
             });
         });
-        ui.horizontal_wrapped(|ui| {
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
             for (i, label) in ["Sensitivity", "Buttons", "Lighting", "Power"]
                 .iter()
                 .enumerate()
             {
-                if design::tab(ui, label, self.profile_tab == i).clicked() {
+                if design::section_tab(ui, label, self.profile_tab == i).clicked() {
                     self.profile_tab = i;
                 }
             }
         });
+        design::separator(ui);
+        ui.add_space(4.0);
         match self.profile_tab {
             0 => self.sensitivity(ui, &s),
             1 => self.buttons(ui),
@@ -925,113 +887,97 @@ impl App {
     fn sensitivity(&mut self, ui: &mut egui::Ui, s: &Snapshot) {
         let p = self.draft.as_mut().unwrap();
         design::panel(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 6.0;
             ui.horizontal(|ui| {
                 ui.strong("DPI stages");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    design::pill(ui, "100–25,600 DPI", MUTED);
+                    design::muted(ui, "100–25,600 DPI");
                 });
             });
-            design::muted(ui, "Use your DPI buttons to move between enabled stages.");
+            design::muted(
+                ui,
+                "Enable up to five stages for your DPI buttons to cycle through.",
+            );
+            design::separator(ui);
             let mut dpis = p.dpis();
             for (i, dpi) in dpis.iter_mut().enumerate() {
                 ui.push_id(i, |ui| {
-                    egui::Frame::new()
-                        .fill(if *dpi > 0 { design::RAISED } else { design::BG })
-                        .corner_radius(9)
-                        .inner_margin(egui::Margin::symmetric(12, 9))
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                let mut enabled = *dpi > 0;
-                                if design::toggle(
-                                    ui,
-                                    &mut enabled,
-                                    &format!("Enable stage {}", i + 1),
+                    ui.horizontal(|ui| {
+                        let mut enabled = *dpi > 0;
+                        if design::toggle(ui, &mut enabled, &format!("Enable stage {}", i + 1))
+                            .changed()
+                        {
+                            *dpi = if enabled { 800 } else { 0 };
+                        }
+                        ui.label(RichText::new(format!("{}", i + 1)).color(MUTED));
+                        ui.add_enabled_ui(enabled, |ui| {
+                            ui.add_sized(
+                                [90.0, 30.0],
+                                egui::DragValue::new(dpi)
+                                    .range(if enabled { 100..=25600 } else { 0..=0 })
+                                    .speed(50)
+                                    .suffix(" DPI"),
+                            );
+                            ui.spacing_mut().slider_width =
+                                (ui.available_width() - 136.0).max(40.0);
+                            // A disabled stage stays zero; drawing its slider must not enable it.
+                            let mut value = (*dpi).max(100);
+                            if ui
+                                .add(
+                                    egui::Slider::new(&mut value, 100..=25600)
+                                        .logarithmic(true)
+                                        .step_by(50.0)
+                                        .show_value(false),
+                                )
+                                .on_hover_text(
+                                    "Drag to set DPI; edit the number for an exact value",
                                 )
                                 .changed()
-                                {
-                                    *dpi = if enabled { 800 } else { 0 };
-                                }
-                                ui.label(
-                                    RichText::new(format!("{:02}", i + 1))
-                                        .size(12.0)
-                                        .color(MUTED),
-                                );
-                                ui.add_enabled_ui(enabled, |ui| {
-                                    ui.add_sized(
-                                        [88.0, 30.0],
-                                        egui::DragValue::new(dpi)
-                                            .range(if enabled { 100..=25600 } else { 0..=0 })
-                                            .speed(50)
-                                            .suffix(" DPI"),
-                                    );
-                                });
-                                if enabled {
-                                    let barw = (ui.available_width() - 160.0).max(35.0);
-                                    let (r, _) =
-                                        ui.allocate_exact_size(vec2(barw, 4.0), Sense::hover());
-                                    ui.painter().rect_filled(r, 2, design::BG);
-                                    let fraction = (*dpi as f32 / 6400.0).clamp(0.04, 1.0);
-                                    ui.painter().rect_filled(
-                                        Rect::from_min_size(r.min, vec2(r.width() * fraction, 4.0)),
-                                        2,
-                                        ACCENT.gamma_multiply(if i == p.raw[1] as usize {
-                                            1.0
-                                        } else {
-                                            0.5
-                                        }),
-                                    );
-                                }
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        if i == p.raw[2] as usize {
-                                            design::pill(ui, "SHIFT", MUTED);
-                                        }
-                                        if i == p.raw[1] as usize {
-                                            design::pill(ui, "DEFAULT", ACCENT);
-                                        }
-                                    },
-                                );
-                            });
+                            {
+                                *dpi = value;
+                            }
                         });
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if i == p.raw[2] as usize {
+                                design::pill(ui, "Shift", MUTED);
+                            }
+                            if i == p.raw[1] as usize {
+                                design::pill(ui, "Default", ACCENT);
+                            }
+                        });
+                    });
+                    if i < 4 {
+                        design::separator(ui);
+                    }
                 });
             }
             p.set_dpis(dpis);
-            ui.add_space(2.0);
+            ui.add_space(4.0);
             ui.horizontal_wrapped(|ui| {
-                ui.label(RichText::new("Default stage").size(12.0).color(MUTED));
+                design::muted(ui, "Default stage");
                 stage_combo(ui, "default-stage", &mut p.raw[1]);
-                ui.add_space(10.0);
-                ui.label(RichText::new("DPI-shift stage").size(12.0).color(MUTED));
+                ui.add_space(8.0);
+                design::muted(ui, "DPI-shift stage");
                 stage_combo(ui, "shift-stage", &mut p.raw[2]);
             });
         });
         ui.add_space(4.0);
         design::panel(ui, |ui| {
-            ui.strong("Polling rate");
-            design::muted(ui, "How often your mouse sends a position update.");
-            ui.horizontal_wrapped(|ui| {
-                for ms in &s.rate_choices {
-                    if design::tab(ui, &format!("{} Hz", 1000 / (*ms) as u16), p.raw[0] == *ms)
-                        .clicked()
-                    {
-                        p.raw[0] = *ms;
-                    }
-                }
+            ui.spacing_mut().item_spacing.y = 6.0;
+            ui.horizontal(|ui| {
+                ui.vertical(|ui| {
+                    ui.strong("Polling rate");
+                    design::muted(ui, format!("{} ms between position updates", p.raw[0]));
+                });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    rate_combo(ui, "profile-rate", &mut p.raw[0], &s.rate_choices);
+                });
             });
-            ui.label(
-                RichText::new(format!("{} ms between updates", p.raw[0]))
-                    .size(11.0)
-                    .color(DIM),
-            );
         });
     }
     fn buttons(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                ui.strong("Button assignments");
-                design::muted(ui, "Choose a button to change its action.");
-            });
+            design::muted(ui, "Select a button to change its assignment.");
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if design::tab(ui, "G-Shift", self.shifted).clicked() {
                     self.shifted = true;
@@ -1045,78 +991,81 @@ impl App {
         let mut clicked = None;
         let width = ui.available_width();
         ui.horizontal_top(|ui| {
-            let left = (width * 0.34).clamp(190.0, 270.0);
+            let left = (width * 0.32).clamp(160.0, 260.0);
             ui.allocate_ui_with_layout(
-                vec2(left, 400.0),
+                vec2(left, 350.0),
                 egui::Layout::top_down(egui::Align::Center),
                 |ui| {
-                    design::card().inner_margin(10).show(ui, |ui| {
-                        let (rect, response) =
-                            ui.allocate_exact_size(vec2(left - 22.0, 340.0), Sense::click());
-                        let hover = response
-                            .hover_pos()
-                            .and_then(|pos| design::mouse_hit(rect, pos));
-                        design::mouse(
-                            ui.painter(),
-                            rect,
-                            &[ACCENT; 8],
-                            true,
-                            hover.or(self.edit_button),
-                        );
-                        if response.clicked() {
-                            clicked = hover;
-                        }
-                        ui.label(
-                            RichText::new("Click a numbered button")
-                                .size(11.0)
-                                .color(DIM),
-                        );
-                    });
+                    let (rect, response) =
+                        ui.allocate_exact_size(vec2(left, 300.0), Sense::click());
+                    let hover = response
+                        .hover_pos()
+                        .and_then(|pos| design::mouse_hit(rect, pos));
+                    design::mouse(
+                        ui.painter(),
+                        rect,
+                        &[Color32::from_rgb(150, 180, 230); 8],
+                        true,
+                        hover.or(self.edit_button),
+                    );
+                    if response.clicked() {
+                        clicked = hover;
+                    }
+                    design::muted(ui, "Button positions");
                     if self.shifted {
-                        design::muted(ui, "Active while your G-Shift button is held.");
+                        design::muted(ui, "While G-Shift is held");
                     }
                 },
             );
             ui.vertical(|ui| {
-                ui.set_width((width - left - 12.0).max(240.0));
-                for (i, name) in profile::BUTTON_NAMES.iter().enumerate() {
-                    egui::Frame::new()
-                        .fill(design::SURFACE)
-                        .corner_radius(8)
-                        .inner_margin(egui::Margin::symmetric(12, 7))
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
+                ui.set_width((width - left - 10.0).max(240.0));
+                design::card().inner_margin(12).show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.spacing_mut().item_spacing.y = 3.0;
+                    ui.spacing_mut().interact_size.y = 26.0;
+                    ui.spacing_mut().button_padding.y = 4.0;
+                    for (i, name) in profile::BUTTON_NAMES.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(format!("{:02}", i + 1))
+                                    .monospace()
+                                    .size(11.0)
+                                    .color(DIM),
+                            );
+                            ui.vertical(|ui| {
+                                ui.spacing_mut().item_spacing.y = 1.0;
+                                ui.label(RichText::new(*name).size(12.0));
                                 ui.label(
-                                    RichText::new(format!("{:02}", i + 1)).size(11.0).color(DIM),
-                                );
-                                ui.vertical(|ui| {
-                                    ui.label(RichText::new(*name).size(12.0));
-                                    ui.label(
-                                        RichText::new(profile::binding_label(
-                                            p.binding(i, self.shifted),
-                                        ))
-                                        .size(11.0)
-                                        .color(ACCENT),
-                                    );
-                                });
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        if ui
-                                            .add(
-                                                egui::Button::new(RichText::new("Edit").size(11.0))
-                                                    .fill(design::RAISED)
-                                                    .min_size(vec2(38.0, 28.0)),
-                                            )
-                                            .clicked()
-                                        {
-                                            clicked = Some(i);
-                                        }
-                                    },
+                                    RichText::new(profile::binding_label(
+                                        p.binding(i, self.shifted),
+                                    ))
+                                    .size(11.0)
+                                    .color(MUTED),
                                 );
                             });
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui
+                                        .add(
+                                            egui::Button::new(
+                                                RichText::new("Edit").size(11.0).color(ACCENT),
+                                            )
+                                            .frame(false),
+                                        )
+                                        .on_hover_text(format!("Edit {name}"))
+                                        .clicked()
+                                    {
+                                        clicked = Some(i);
+                                    }
+                                },
+                            );
                         });
-                }
+                        if i + 1 < profile::BUTTON_NAMES.len() {
+                            design::separator(ui);
+                        }
+                    }
+                });
             });
         });
         if let Some(i) = clicked {
@@ -1133,9 +1082,9 @@ impl App {
                     design::pill(
                         ui,
                         if p.raw[252] != 0 {
-                            "CUSTOM ANIMATION"
+                            "Custom animation"
                         } else {
-                            "ONBOARD"
+                            "Onboard"
                         },
                         MUTED,
                     );
@@ -1149,23 +1098,16 @@ impl App {
                     "Choose an effect to keep with this profile."
                 },
             );
-            lighting_controls(
-                ui,
-                &mut self.effect,
-                &mut self.color,
-                &mut self.period,
-                &mut self.intensity,
-                &s.effects,
-            );
-            let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 230.0), Sense::hover());
-            design::mouse(
-                ui.painter(),
-                r,
-                &preview_colors(self.effect, self.color),
-                false,
-                None,
-            );
-            ui.horizontal(|ui| {
+            lighting_editor(ui, preview_colors(self.effect, self.color), |ui| {
+                lighting_controls(
+                    ui,
+                    &mut self.effect,
+                    &mut self.color,
+                    &mut self.period,
+                    &mut self.intensity,
+                    &s.effects,
+                );
+                ui.add_space(8.0);
                 if ui
                     .add(design::secondary("Use effect in this profile"))
                     .clicked()
@@ -1183,11 +1125,7 @@ impl App {
                         }
                     }
                 }
-                ui.label(
-                    RichText::new("Applied when you save to mouse")
-                        .size(11.0)
-                        .color(MUTED),
-                );
+                design::muted(ui, "Applied when you save to mouse.");
             });
         });
         design::panel(ui, |ui| {
@@ -1262,22 +1200,22 @@ impl App {
         design::title(
             ui,
             "Lighting",
-            "A little color. A setup that feels like yours.",
+            "Preview and apply software-controlled lighting.",
         );
         if s.status.mode != 2 {
             egui::Frame::new()
-                .fill(Color32::from_rgb(41, 47, 35))
-                .stroke(Stroke::new(1.0, Color32::from_rgb(68, 79, 49)))
-                .corner_radius(12)
+                .fill(design::SELECTED)
+                .stroke(Stroke::new(1.0, design::BORDER))
+                .corner_radius(6)
                 .inner_margin(16)
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
-                            ui.strong("You're using onboard lighting");
+                            ui.strong("Onboard lighting is active");
                             design::muted(ui, "Enable software control to apply live effects.");
                         });
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(design::primary("Enable")).clicked() {
+                            if ui.add(design::primary("Use software mode")).clicked() {
                                 self.send(Job::Mode(false));
                             }
                         });
@@ -1285,24 +1223,17 @@ impl App {
                 });
         }
         design::panel(ui, |ui| {
-            let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 280.0), Sense::hover());
-            let colors = preview_colors(self.effect, self.color);
-            design::mouse(ui.painter(), r, &colors, false, None);
-            ui.horizontal(|ui| {
-                design::eyebrow(ui, "EFFECT PREVIEW");
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    design::pill(ui, "PREVIEW ONLY", MUTED);
-                });
-            });
-            lighting_controls(
-                ui,
-                &mut self.effect,
-                &mut self.color,
-                &mut self.period,
-                &mut self.intensity,
-                &s.effects,
-            );
-            ui.horizontal(|ui| {
+            lighting_editor(ui, preview_colors(self.effect, self.color), |ui| {
+                ui.strong("Effect");
+                lighting_controls(
+                    ui,
+                    &mut self.effect,
+                    &mut self.color,
+                    &mut self.period,
+                    &mut self.intensity,
+                    &s.effects,
+                );
+                ui.add_space(12.0);
                 if ui
                     .add_enabled(s.status.mode == 2, design::primary("Apply live effect"))
                     .clicked()
@@ -1320,38 +1251,30 @@ impl App {
                         }
                     }
                 }
-                ui.label(
-                    RichText::new("For persistent effects, use Profiles → Lighting.")
-                        .size(11.0)
-                        .color(MUTED),
-                );
+                design::muted(ui, "Save persistent effects in Profiles → Lighting.");
             });
         });
         design::panel(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.strong("Individual segments");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    design::pill(ui, "8 ZONES", MUTED);
+                    design::pill(ui, "8 segments", MUTED);
                 });
             });
-            design::muted(ui, "Build your own palette, one segment at a time.");
+            design::muted(ui, "Set a color for each of the eight lighting segments.");
             ui.columns(self.leds.len(), |columns| {
                 for (i, c) in self.leds.iter_mut().enumerate() {
                     columns[i].push_id(i, |ui| {
-                        egui::Frame::new()
-                            .fill(design::BG)
-                            .corner_radius(9)
-                            .inner_margin(8)
-                            .show(ui, |ui| {
-                                ui.vertical_centered(|ui| {
-                                    ui.color_edit_button_srgb(c);
-                                    ui.label(
-                                        RichText::new(format!("{}", (b'A' + i as u8) as char))
-                                            .size(10.0)
-                                            .color(MUTED),
-                                    );
-                                });
+                        egui::Frame::new().inner_margin(8).show(ui, |ui| {
+                            ui.vertical_centered(|ui| {
+                                ui.color_edit_button_srgb(c);
+                                ui.label(
+                                    RichText::new(format!("{}", (b'A' + i as u8) as char))
+                                        .size(10.0)
+                                        .color(MUTED),
+                                );
                             });
+                        });
                     });
                 }
             });
@@ -1383,17 +1306,16 @@ impl App {
         let s = self.snapshot.as_ref().unwrap().clone();
         design::title(
             ui,
-            "Device & backups",
-            "Keep your setup safe, and easy to bring back.",
+            "Backups & device",
+            "Save a copy of your configuration or restore an earlier setup.",
         );
         design::panel(ui, |ui| {
             ui.horizontal(|ui| {
                 let (r, _) = ui.allocate_exact_size(vec2(42.0, 42.0), Sense::hover());
-                ui.painter()
-                    .rect_filled(r, 12, Color32::from_rgb(46, 56, 35));
+                ui.painter().rect_filled(r, 6, design::SELECTED);
                 design::icon(ui.painter(), r.shrink(10.0), Icon::Shield, ACCENT);
                 ui.vertical(|ui| {
-                    ui.strong("Automatic backup, every save");
+                    ui.strong("Automatic backups");
                     design::muted(
                         ui,
                         "Your profiles, macros and animations are backed up before changes.",
@@ -1401,7 +1323,7 @@ impl App {
                 });
             });
             ui.add_space(4.0);
-            if ui.add(design::primary("Create a backup now")).clicked() {
+            if ui.add(design::primary("Create backup")).clicked() {
                 self.send(Job::Backup);
             }
             ui.collapsing("Backup location", |ui| {
@@ -1418,7 +1340,7 @@ impl App {
             });
         });
         design::panel(ui, |ui| {
-            ui.strong("Move or restore a setup");
+            ui.strong("Import & export");
             design::muted(ui, "Export a profile to keep, or bring back a saved setup.");
             ui.horizontal_wrapped(|ui| {
                 if ui
@@ -1500,9 +1422,10 @@ impl App {
         });
         design::panel(ui, |ui| {
             ui.strong("Device information");
+            ui.spacing_mut().interact_size.y = 20.0;
             egui::Grid::new("device-info")
                 .num_columns(2)
-                .spacing([40.0, 14.0])
+                .spacing([40.0, 8.0])
                 .show(ui, |ui| {
                     for (k, v) in [
                         ("Model", "G502 X Plus".to_owned()),
@@ -1595,61 +1518,98 @@ impl App {
         }
     }
     fn settings(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        design::title(
-            ui,
-            "Always in the loop",
-            "Live readings, quiet battery alerts, and a home in your system tray.",
-        );
+        design::title(ui, "Settings", "Preferences for this computer.");
         ui.spacing_mut().item_spacing.y = 8.0;
-        if ui.available_width() >= 880.0 {
-            ui.columns(2, |columns| {
-                self.live_preferences(&mut columns[0]);
-                self.alert_preferences(&mut columns[1], ctx);
-            });
-        } else {
-            self.live_preferences(ui);
-            ui.add_space(8.0);
-            self.alert_preferences(ui, ctx);
-        }
-        ui.add_space(8.0);
+        self.live_preferences(ui);
+        ui.add_space(4.0);
+        self.alert_preferences(ui, ctx);
+        ui.add_space(4.0);
         design::card().show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
-                design::eyebrow(ui, "BACKGROUND & STARTUP");
+                ui.strong("Background & startup");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    design::pill(ui, if self.background_running { "RUNNING" } else { "STOPPED" }, if self.background_running { ACCENT } else { MUTED });
+                    design::pill(
+                        ui,
+                        if self.background_running {
+                            "Running"
+                        } else {
+                            "Stopped"
+                        },
+                        if self.background_running {
+                            design::SUCCESS
+                        } else {
+                            MUTED
+                        },
+                    );
                 });
             });
             ui.add_space(4.0);
-            if preference_toggle(ui, &mut self.preferences.background_enabled, "Keep a monitor in the system tray") && !self.preferences.background_enabled {
+            if preference_toggle(
+                ui,
+                &mut self.preferences.background_enabled,
+                "Keep running in the system tray",
+            ) && !self.preferences.background_enabled
+            {
                 self.preferences.launch_at_login = false;
             }
-            design::muted(ui, "Battery checks continue once a minute after you close this window. Reopen the app from the tray.");
+            design::muted(
+                ui,
+                "Check the battery once a minute when the window is closed.",
+            );
             ui.add_space(4.0);
             design::separator(ui);
             ui.add_space(4.0);
-            if preference_toggle(ui, &mut self.preferences.launch_at_login, "Launch when I sign in") && self.preferences.launch_at_login {
+            if preference_toggle(
+                ui,
+                &mut self.preferences.launch_at_login,
+                "Launch when I sign in",
+            ) && self.preferences.launch_at_login
+            {
                 self.preferences.background_enabled = true;
             }
-            design::muted(ui, "Starts quietly in the background, without opening a window.");
+            design::muted(ui, "Start in the tray, with no window.");
             if self.background_running || self.saved_preferences.background_enabled {
                 ui.add_space(4.0);
                 ui.horizontal_wrapped(|ui| {
                     if self.background_running {
                         if ui.add(design::secondary("Quit monitor for now")).clicked() {
-                            self.settings_message = match crate::monitor::quit() { Ok(()) => "Monitor stopping. Your startup preference is saved.".into(), Err(e) => format!("{e:#}") };
+                            self.settings_message = match crate::monitor::quit() {
+                                Ok(()) => {
+                                    "Monitor stopping. Your startup preference is saved.".into()
+                                }
+                                Err(e) => format!("{e:#}"),
+                            };
                         }
                     } else if ui.add(design::secondary("Start monitor")).clicked() {
-                        self.settings_message = match crate::monitor::start() { Ok(()) => "Starting the background monitor…".into(), Err(e) => format!("{e:#}") };
+                        self.settings_message = match crate::monitor::start() {
+                            Ok(()) => "Starting the background monitor…".into(),
+                            Err(e) => format!("{e:#}"),
+                        };
                     }
-                    if self.background_running && let Some(h) = crate::monitor::health() {
-                        design::muted(ui, format!("Last check {}s ago", crate::alerts::now().saturating_sub(h.last_checked)));
-                        if let Some(error) = h.error { ui.colored_label(design::ERROR, "Needs attention").on_hover_text(error); }
+                    if self.background_running
+                        && let Some(h) = crate::monitor::health()
+                    {
+                        design::muted(
+                            ui,
+                            format!(
+                                "Last check {}s ago",
+                                crate::alerts::now().saturating_sub(h.last_checked)
+                            ),
+                        );
+                        if let Some(error) = h.error {
+                            ui.colored_label(design::ERROR, "Needs attention")
+                                .on_hover_text(error);
+                        }
                     }
                 });
             }
             #[cfg(target_os = "linux")]
-            ui.label(RichText::new("On GNOME, enable AppIndicator support to see tray icons.").size(11.0).color(DIM));
+            ui.label(
+                RichText::new("On GNOME, enable AppIndicator support to see tray icons.")
+                    .size(11.0)
+                    .color(DIM),
+            );
         });
         if self.background_running
             && let Some(e) = crate::monitor::tray_error()
@@ -1664,9 +1624,7 @@ impl App {
     fn live_preferences(&mut self, ui: &mut egui::Ui) {
         design::card().show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.set_min_height(178.0);
-            design::eyebrow(ui, "LIVE DEVICE DATA");
-            ui.add_space(6.0);
+
             preference_toggle(
                 ui,
                 &mut self.preferences.live_updates,
@@ -1674,12 +1632,12 @@ impl App {
             );
             design::muted(
                 ui,
-                "Current readings, without refreshing. Unsaved edits stay intact.",
+                "Refresh device readings without changing your unsaved edits.",
             );
             ui.add_space(8.0);
             ui.add_enabled_ui(self.preferences.live_updates, |ui| {
                 ui.horizontal(|ui| {
-                    design::muted(ui, "Every");
+                    design::muted(ui, "Refresh interval");
                     ui.spacing_mut().slider_width = 155.0;
                     ui.add(
                         egui::Slider::new(&mut self.preferences.refresh_seconds, 1..=10)
@@ -1692,18 +1650,19 @@ impl App {
     fn alert_preferences(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         design::card().show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.set_min_height(178.0);
-            design::eyebrow(ui, "BATTERY ALERTS");
-            ui.add_space(6.0);
+
             preference_toggle(
                 ui,
                 &mut self.preferences.battery_alerts,
                 "Low-battery notification",
             );
-            design::muted(ui, "One alert when running low. Quiet while charging.");
+            design::muted(
+                ui,
+                "Notify once when the battery reaches the threshold. Disabled while charging.",
+            );
             ui.horizontal_wrapped(|ui| {
                 ui.add_enabled_ui(self.preferences.battery_alerts, |ui| {
-                    design::muted(ui, "At");
+                    design::muted(ui, "Notify at");
                     ui.spacing_mut().slider_width = 90.0;
                     ui.add(
                         egui::Slider::new(&mut self.preferences.low_battery_percent, 5..=50)
@@ -1743,34 +1702,26 @@ impl App {
     }
     fn sidebar(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("navigation")
-            .exact_width(206.0)
+            .exact_width(188.0)
             .resizable(false)
-            .frame(egui::Frame::new().fill(design::SIDEBAR).inner_margin(16))
+            .frame(egui::Frame::new().fill(design::SIDEBAR).inner_margin(14))
             .show(ctx, |ui| {
-                ui.add_space(12.0);
+                ui.add_space(15.0);
                 ui.horizontal(|ui| {
-                    let (r, _) = ui.allocate_exact_size(vec2(34.0, 38.0), Sense::hover());
-                    ui.painter().rect_filled(r, 9, ACCENT);
-                    design::icon(ui.painter(), r.shrink(8.0), Icon::Mouse, design::INK);
+                    let (r, _) = ui.allocate_exact_size(vec2(27.0, 32.0), Sense::hover());
+                    design::icon(ui.painter(), r.shrink(4.0), Icon::Mouse, TEXT);
                     ui.vertical(|ui| {
-                        ui.label(RichText::new("G502 X").size(19.0).strong());
-                        ui.label(
-                            RichText::new("CONTROL")
-                                .size(9.0)
-                                .extra_letter_spacing(2.3)
-                                .color(MUTED),
-                        );
+                        ui.spacing_mut().item_spacing.y = 1.0;
+                        ui.label(RichText::new("G502 X").size(18.0).strong());
+                        ui.label(RichText::new("Control").size(12.0).color(MUTED));
                     });
                 });
-                ui.add_space(31.0);
-                design::eyebrow(ui, "WORKSPACE");
-                ui.add_space(3.0);
+                ui.add_space(30.0);
+                ui.spacing_mut().item_spacing.y = 4.0;
                 for (i, (label, icon)) in [
                     ("Overview", Icon::Grid),
                     ("Profiles", Icon::Sliders),
                     ("Lighting", Icon::Sun),
-                    ("Device & backups", Icon::Shield),
-                    ("Settings", Icon::Settings),
                 ]
                 .iter()
                 .enumerate()
@@ -1779,18 +1730,27 @@ impl App {
                         self.tab = i;
                     }
                 }
+                ui.add_space(16.0);
+                design::separator(ui);
+                ui.add_space(16.0);
+                for (i, (label, icon)) in [
+                    ("Backups & device", Icon::Shield),
+                    ("Settings", Icon::Settings),
+                ]
+                .iter()
+                .enumerate()
+                {
+                    if design::nav(ui, label, *icon, self.tab == i + 3) {
+                        self.tab = i + 3;
+                    }
+                }
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("G502 X Control").size(10.0).color(DIM));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.label(
-                                RichText::new(env!("CARGO_PKG_VERSION"))
-                                    .size(10.0)
-                                    .color(DIM),
-                            );
-                        });
-                    });
-                    ui.add_space(9.0);
+                    ui.label(
+                        RichText::new(format!("Version {}", env!("CARGO_PKG_VERSION")))
+                            .size(10.0)
+                            .color(DIM),
+                    );
+                    ui.add_space(12.0);
                     if ui
                         .add_enabled(
                             !self.busy && !self.dirty(),
@@ -1801,79 +1761,63 @@ impl App {
                     {
                         self.send(Job::Refresh);
                     }
+                    ui.add_space(14.0);
+                    ui.allocate_ui_with_layout(
+                        vec2(ui.available_width(), 67.0),
+                        egui::Layout::top_down(egui::Align::LEFT),
+                        |ui| {
+                            ui.spacing_mut().item_spacing.y = 7.0;
+                            ui.spacing_mut().interact_size.y = 16.0;
+                            if self.connection_error.is_some() {
+                                design::status(ui, "Reconnecting…", design::ERROR);
+                            } else if self.saved_preferences.live_updates
+                                && self.last_success.is_some()
+                            {
+                                design::status(ui, "Connected · Live", design::SUCCESS);
+                            } else if self.snapshot.is_some() {
+                                design::status(ui, "Live updates off", DIM);
+                            } else {
+                                design::status(ui, "Connecting…", DIM);
+                            }
+                            if let Some(s) = &self.snapshot {
+                                ui.horizontal(|ui| {
+                                    let (r, _) =
+                                        ui.allocate_exact_size(vec2(14.0, 14.0), Sense::hover());
+                                    design::icon(
+                                        ui.painter(),
+                                        r,
+                                        if s.endpoint.product == 0xc095 {
+                                            Icon::Link
+                                        } else {
+                                            Icon::Radio
+                                        },
+                                        DIM,
+                                    );
+                                    ui.label(RichText::new(connection(s)).size(11.0).color(MUTED));
+                                });
+                                ui.horizontal(|ui| {
+                                    let (r, _) =
+                                        ui.allocate_exact_size(vec2(14.0, 14.0), Sense::hover());
+                                    design::icon(ui.painter(), r, Icon::Battery, DIM);
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "{}%{}",
+                                            s.status.battery,
+                                            if (1..=4).contains(&s.status.charge_status) {
+                                                " · Charging"
+                                            } else {
+                                                " battery"
+                                            }
+                                        ))
+                                        .size(11.0)
+                                        .color(MUTED),
+                                    );
+                                });
+                            }
+                        },
+                    );
                     ui.add_space(12.0);
-                    egui::Frame::new()
-                        .fill(design::SURFACE)
-                        .corner_radius(12)
-                        .inner_margin(13)
-                        .show(ui, |ui| {
-                            ui.allocate_ui_with_layout(
-                                vec2(ui.available_width(), 110.0),
-                                egui::Layout::top_down(egui::Align::LEFT),
-                                |ui| {
-                                    ui.set_width(ui.available_width());
-                                    if let Some(s) = &self.snapshot {
-                                        ui.horizontal(|ui| {
-                                            let (r, _) = ui.allocate_exact_size(
-                                                vec2(18.0, 18.0),
-                                                Sense::hover(),
-                                            );
-                                            design::icon(
-                                                ui.painter(),
-                                                r,
-                                                if s.endpoint.product == 0xc095 {
-                                                    Icon::Link
-                                                } else {
-                                                    Icon::Radio
-                                                },
-                                                ACCENT,
-                                            );
-                                            ui.label(
-                                                RichText::new(connection(s)).size(11.0).color(TEXT),
-                                            );
-                                        });
-                                        ui.horizontal(|ui| {
-                                            ui.label(
-                                                RichText::new(format!(
-                                                    "{}% battery",
-                                                    s.status.battery
-                                                ))
-                                                .size(12.0)
-                                                .color(MUTED),
-                                            );
-                                        });
-                                        let (r, _) = ui.allocate_exact_size(
-                                            vec2(ui.available_width(), 3.0),
-                                            Sense::hover(),
-                                        );
-                                        ui.painter().rect_filled(r, 2, design::RAISED);
-                                        ui.painter().rect_filled(
-                                            Rect::from_min_size(
-                                                r.min,
-                                                vec2(
-                                                    r.width() * s.status.battery.min(100) as f32
-                                                        / 100.0,
-                                                    3.0,
-                                                ),
-                                            ),
-                                            2,
-                                            ACCENT,
-                                        );
-                                        ui.label(
-                                            RichText::new("Last read from your mouse")
-                                                .size(9.0)
-                                                .color(DIM),
-                                        );
-                                    } else {
-                                        ui.label(
-                                            RichText::new("Waiting for device")
-                                                .size(12.0)
-                                                .color(MUTED),
-                                        );
-                                    }
-                                },
-                            );
-                        });
+                    design::separator(ui);
                 });
             });
     }
@@ -1882,7 +1826,7 @@ impl App {
             .frame(
                 egui::Frame::new()
                     .fill(design::SIDEBAR)
-                    .inner_margin(egui::Margin::symmetric(26, 14)),
+                    .inner_margin(egui::Margin::symmetric(24, 8)),
             )
             .show(ctx, |ui| {
                 let dirty = if self.tab == 4 {
@@ -1984,7 +1928,7 @@ impl App {
                                     self.send(Job::Activate(p.sector));
                                 }
                             } else {
-                                design::pill(ui, "ACTIVE PROFILE", ACCENT);
+                                design::pill(ui, "Active profile", design::SUCCESS);
                             }
                         } else if ui
                             .add(
@@ -2144,53 +2088,7 @@ impl eframe::App for App {
         }
         self.sidebar(ctx);
         self.footer(ctx);
-        egui::TopBottomPanel::top("topbar")
-            .frame(
-                egui::Frame::new()
-                    .fill(design::BG)
-                    .inner_margin(egui::Margin::symmetric(28, 18)),
-            )
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new("MY DEVICES")
-                            .size(10.0)
-                            .color(DIM)
-                            .extra_letter_spacing(1.0),
-                    );
-                    ui.label(RichText::new("/").color(design::BORDER));
-                    ui.label(
-                        RichText::new("G502 X PLUS")
-                            .size(10.0)
-                            .color(MUTED)
-                            .extra_letter_spacing(0.7),
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if self.connection_error.is_some() {
-                            design::pill(ui, "RECONNECTING", design::ERROR);
-                        } else if self.saved_preferences.live_updates && self.last_success.is_some()
-                        {
-                            design::pill(ui, "LIVE", ACCENT);
-                        } else {
-                            design::pill(ui, "LIVE UPDATES OFF", MUTED);
-                        }
-                        if let Some(s) = &self.snapshot {
-                            design::pill(
-                                ui,
-                                if s.status.mode == 1 {
-                                    "ONBOARD"
-                                } else {
-                                    "SOFTWARE"
-                                },
-                                ACCENT,
-                            );
-                        } else {
-                            design::pill(ui, "CONNECTING", MUTED);
-                        }
-                    });
-                });
-            });
-        egui::CentralPanel::default().frame(egui::Frame::new().fill(design::BG).inner_margin(egui::Margin{left:28,right:28,top:14,bottom:20})).show(ctx,|ui|{
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(design::BG).inner_margin(egui::Margin{left:30,right:30,top:30,bottom:24})).show(ctx,|ui|{
             egui::ScrollArea::vertical().id_salt(("page",self.tab,self.profile_tab)).auto_shrink([false,false]).show(ui,|ui|{ui.add_enabled_ui(!self.busy || self.tab == 4,|ui|{
                 if self.tab == 4 { self.settings(ui, ctx); } else if self.snapshot.is_some(){
                     if let Some(error) = &self.connection_error {
@@ -2198,7 +2096,7 @@ impl eframe::App for App {
                         ui.add_space(12.0);
                     }
                     match self.tab{0=>self.overview(ui),1=>self.profiles(ui),2=>self.lighting(ui),_=>self.files(ui)}}else{
-                    design::title(ui,if self.error{"Let's reconnect"}else{"Getting things ready"},"Connect your G502 X Plus with its USB cable or LIGHTSPEED receiver.");design::card().show(ui,|ui|{let (r,_)=ui.allocate_exact_size(vec2(ui.available_width(),340.0),Sense::hover());design::mouse(ui.painter(),r,&[design::DIM;8],false,None);ui.vertical_centered(|ui|{if self.error{ui.add(egui::Label::new(RichText::new(&self.message).color(design::ERROR)).wrap());if ui.add(design::primary("Try again")).clicked(){self.send(Job::Refresh);}}else{ui.spinner();design::muted(ui,"Reading your saved settings…");}});});
+                    design::title(ui,if self.error{"Device disconnected"}else{"Connecting to your mouse"},"Connect your G502 X Plus with its USB cable or LIGHTSPEED receiver.");design::card().show(ui,|ui|{let (r,_)=ui.allocate_exact_size(vec2(ui.available_width(),340.0),Sense::hover());design::mouse(ui.painter(),r,&[design::DIM;8],false,None);ui.vertical_centered(|ui|{if self.error{ui.add(egui::Label::new(RichText::new(&self.message).color(design::ERROR)).wrap());if ui.add(design::primary("Try again")).clicked(){self.send(Job::Refresh);}}else{ui.spinner();design::muted(ui,"Reading your saved settings…");}});});
                 }
             });});
         });
@@ -2218,7 +2116,7 @@ impl eframe::App for App {
 if ui.add(design::secondary("Cancel")).clicked(){self.restore_confirm=false;}});});
         }
         if self.close_confirm {
-            egui::Window::new("Before you go")
+            egui::Window::new("Unsaved changes")
                 .collapsible(false)
                 .resizable(false)
                 .show(ctx, |ui| {
@@ -2316,6 +2214,37 @@ fn rate_combo(ui: &mut egui::Ui, id: &str, ms: &mut u8, choices: &[u8]) {
             }
         });
 }
+/// Both lighting pages share the same preview and responsive control layout.
+fn lighting_editor(ui: &mut egui::Ui, colors: [Color32; 8], content: impl FnOnce(&mut egui::Ui)) {
+    let preview = |ui: &mut egui::Ui, width: f32, height: f32| {
+        let (r, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+        design::mouse(ui.painter(), r, &colors, false, None);
+        ui.label(RichText::new("Preview only").size(11.0).color(DIM));
+    };
+    if ui.available_width() >= 680.0 {
+        let width = ui.available_width();
+        ui.horizontal_top(|ui| {
+            ui.allocate_ui_with_layout(
+                vec2(240.0, 245.0),
+                egui::Layout::top_down(egui::Align::Center),
+                |ui| {
+                    preview(ui, 240.0, 220.0);
+                },
+            );
+            ui.vertical(|ui| {
+                ui.set_width(width - 250.0);
+                ui.add_space(12.0);
+                content(ui);
+            });
+        });
+    } else {
+        ui.vertical_centered(|ui| {
+            preview(ui, ui.available_width(), 190.0);
+        });
+        content(ui);
+    }
+}
+
 fn lighting_controls(
     ui: &mut egui::Ui,
     effect: &mut u16,
@@ -2334,7 +2263,7 @@ fn lighting_controls(
         }
     });
     if [1, 10].contains(effect) {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             design::muted(ui, "Color");
             ui.color_edit_button_srgb(color);
             ui.label(
@@ -2368,6 +2297,7 @@ fn lighting_controls(
     }
     if [3, 10, 21, 22].contains(effect) {
         ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().slider_width = 110.0;
             design::muted(ui, "Cycle duration");
             ui.add(
                 egui::DragValue::new(period)
@@ -2570,6 +2500,33 @@ mod tests {
         a.accept(incoming(changed), true);
         assert_eq!(a.name, "External");
         assert!(!a.dirty());
+    }
+    #[test]
+    fn rendering_dpi_sliders_preserves_disabled_stages_and_profile_bytes() {
+        let mut snapshot = sample();
+        snapshot.profiles[0].set_dpis([800, 0, 1600, 0, 25600]);
+        snapshot.profiles[0].raw[0] = 1;
+        for width in [540.0, 920.0] {
+            let mut a = app();
+            a.accept(incoming(snapshot.clone()), false);
+            let original = a.draft.clone();
+            let ctx = egui::Context::default();
+            design::setup(&ctx);
+            for _ in 0..3 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        vec2(width, 700.0),
+                    )),
+                    ..Default::default()
+                };
+                let _ = ctx.run(input, |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| a.sensitivity(ui, &snapshot));
+                });
+            }
+            assert_eq!(a.draft, original);
+            assert!(!a.dirty());
+        }
     }
     #[test]
     fn factory_name_placeholder_preserves_original_profile_bytes() {

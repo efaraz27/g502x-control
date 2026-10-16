@@ -49,3 +49,11 @@ The build workflow runs formatting, Clippy, tests, headless compilation, GUI rel
 - A new cross-platform lifecycle smoke test checks disabled startup, opt-in registration, singleton behavior, session quit, relaunch, persistent stop and startup removal. CI runs it after every native release build.
 
 Windows/macOS tray, login and notification code is included in native CI builds and lifecycle checks. Real desktop visibility, notification permissions and mouse behavior on those platforms still require physical testing. Unsigned-release limitations continue to apply.
+
+## Version 0.5 interface refinement (2026-10-16)
+
+- Native Linux screenshots inspected for Overview, Sensitivity, Buttons, profile Lighting/Power, live Lighting, Backups & device and Settings at 1120 × 800. Compact layouts checked at 840 × 740, with an additional minimum-size 840 × 640 overview check. Longer pages scroll while save actions stay visible.
+- 26 Linux unit tests pass. New regression tests verify that rendering DPI sliders preserves disabled stages and all profile bytes, and that every numbered mouse callout selects the correct button at different preview sizes.
+- Formatting, strict Clippy, release compilation and headless CLI compilation pass. Headless compilation retains the existing unused-GUI-helper warnings.
+- The new diagram is original vector artwork, rasterized from the checked-in SVG. LED overlay paths and button hit targets share its coordinates. Previews show draft colors, not a live LED readback.
+- Native captures read the connected mouse only. Device/protocol, profile-format, transport, monitor, alert, startup and process-launch implementations are unchanged by this release. Existing hardware-validation limits above still apply.

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0
+
+- Redesigned desktop UI with neutral surfaces, compact navigation, clear control groups and restrained color.
+- DPI sliders alongside exact numeric entry; denser profile and button editors.
+- Original smooth mouse illustration shared by lighting previews and the button map, with legible numbered callouts.
+- Aligned settings rows, responsive lighting controls, and updated application/tray icons.
+- Read-only rendering and scaled hit-target regression tests; refreshed guide and screenshots.
+
 ## 0.4.0
 
 - Live device readings, automatic reconnection and protected profile drafts/open editors.

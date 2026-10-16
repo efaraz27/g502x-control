@@ -6,6 +6,8 @@
 
 The **Buttons** tab has standard and G-Shift layers. Select a numbered marker or assignment row. Numbers represent hardware storage positions, not Logitech's printed G-button labels. USB HID keyboard usages follow the operating system's keyboard layout. Unknown existing bindings remain unchanged until you replace them.
 
+![Button assignments and the mouse diagram](buttons.png)
+
 **Lighting** on the main sidebar applies live software-mode effects. **Profiles → Lighting** saves an onboard effect. Illustrations show your draft, not a readback of the LEDs. Individual LED colors cannot be read from the firmware. Live controls may reset on sleep, reconnect, profile activation or mode changes.
 
 **Power** contains firmware fields for dim/sleep timeouts and angle snapping. Their behavior varies with firmware and operating mode. Physical testing has not covered every combination.
@@ -18,10 +20,10 @@ The **Buttons** tab has standard and G-Shift layers. Select a numbered marker or
 
 - **Update automatically** defaults to every 2 seconds (adjustable from 1–10). Battery, DPI, rate, active profile, mode and wheel status update live. Complete onboard profiles refresh every 30 seconds. Polling only reads; it does not reapply your settings or write flash.
 - Unsaved profile edits, open button editors and pending live inputs are preserved. If a saved profile changes elsewhere while you edit, the original conflict check still prevents overwriting it. Discard the draft to load the latest version before trying again.
-- A **RECONNECTING** badge marks stale data when the mouse sleeps or disconnects. The app retries automatically, backing off to 30 seconds. Wake the mouse to reconnect; **Refresh device** can also request a fresh read.
+- A **Reconnecting…** status marks stale data when the mouse sleeps or disconnects. The app retries automatically, backing off to 30 seconds. Wake the mouse to reconnect; **Refresh device** can also request a fresh read.
 - **Battery alerts** default to 20% (adjustable from 5–50%). They use your OS notification center. An alert is rearmed after charging or recovering at least 5 percentage points above the threshold, with a 10-minute cooldown. Delivery state survives restarts and is shared by the window and background monitor. Charging and invalid readings do not trigger alerts.
-- **Keep a monitor in the system tray** starts a separate lightweight process that checks battery once a minute after you close the window. Its menu shows battery/connection status and offers **Open G502 X Control**, **Settings**, and **Quit background monitor**. Reopening focuses the existing control-panel window.
-- **Launch in the background when I sign in** also enables the tray monitor. It starts without a window for your user account: XDG autostart on Linux, a LaunchAgent on macOS, and the current-user Run key on Windows. Enable it from the installed app at its permanent location. Install the Mac app in Applications first. Turning off background monitoring also turns off startup.
+- **Keep running in the system tray** starts a separate lightweight process that checks battery once a minute after you close the window. Its menu shows battery/connection status and offers **Open G502 X Control**, **Settings**, and **Quit background monitor**. Reopening focuses the existing control-panel window.
+- **Launch when I sign in** also enables the tray monitor. It starts without a window for your user account: XDG autostart on Linux, a LaunchAgent on macOS, and the current-user Run key on Windows. Enable it from the installed app at its permanent location. Install the Mac app in Applications first. Turning off background monitoring also turns off startup.
 
 Background monitoring and startup are opt-in. **Quit monitor for now** stops the current session while keeping your startup preference. Opening the app again starts the monitor if the background preference is enabled. Disable the background option and save to stop it persistently.
 
@@ -31,7 +33,7 @@ Preferences and alert history are stored beside the `backups` folder below. `mon
 
 ## Backups
 
-A complete backup is created before each flash save and full restore. Use **Device & backups → Create a backup now** to save one manually. Automatic backup folders:
+A complete backup is created before each flash save and full restore. Use **Backups & device → Create backup** to save one manually. Automatic backup folders:
 
 | OS | Folder |
 | --- | --- |
