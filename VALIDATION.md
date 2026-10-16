@@ -56,4 +56,5 @@ Windows/macOS tray, login and notification code is included in native CI builds 
 - 26 Linux unit tests pass. New regression tests verify that rendering DPI sliders preserves disabled stages and all profile bytes, and that every numbered mouse callout selects the correct button at different preview sizes.
 - Formatting, strict Clippy, release compilation and headless CLI compilation pass. Headless compilation retains the existing unused-GUI-helper warnings.
 - The new diagram is original vector artwork, rasterized from the checked-in SVG. LED overlay paths and button hit targets share its coordinates. Previews show draft colors, not a live LED readback.
-- Native captures read the connected mouse only. Device/protocol, profile-format, transport, monitor, alert, startup and process-launch implementations are unchanged by this release. Existing hardware-validation limits above still apply.
+- Native captures read the connected mouse only. Production device/protocol, profile-format, transport, monitor, alert, startup and process-launch implementations are unchanged by this release. Existing hardware-validation limits above still apply.
+- Intel macOS CI exposed a collision in the existing timestamp-named file-export test directories. These tests now use unique RAII temporary directories; the production export code is unchanged.

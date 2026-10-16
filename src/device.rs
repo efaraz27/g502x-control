@@ -777,28 +777,10 @@ pub fn write_json_new(path: &Path, value: &impl Serialize) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    struct TestDirectory(PathBuf);
-    impl TestDirectory {
-        fn new() -> Self {
-            let unique = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos();
-            let path =
-                std::env::temp_dir().join(format!("g502x-test-{}-{unique}", std::process::id()));
-            fs::create_dir(&path).unwrap();
-            Self(path)
-        }
-    }
-    impl Drop for TestDirectory {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
-        }
-    }
     #[test]
     fn json_export_never_overwrites_existing_data() {
-        let dir = TestDirectory::new();
-        let path = dir.0.join("profile.json");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("profile.json");
         write_json_new(&path, &vec![1, 2, 3]).unwrap();
         let original = fs::read(&path).unwrap();
         assert!(write_json_new(&path, &vec![9, 8, 7]).is_err());
@@ -819,10 +801,10 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn json_export_rejects_symlink_destination() {
-        let dir = TestDirectory::new();
-        let target = dir.0.join("private.json");
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("private.json");
         fs::write(&target, b"original").unwrap();
-        let link = dir.0.join("link.json");
+        let link = dir.path().join("link.json");
         std::os::unix::fs::symlink(&target, &link).unwrap();
         assert!(write_json_new(&link, &vec![1]).is_err());
         assert_eq!(fs::read(target).unwrap(), b"original");
